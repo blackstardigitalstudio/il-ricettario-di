@@ -1,4 +1,5 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response
+from fastapi.responses import FileResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -504,6 +505,98 @@ async def do_ai_recipe_generation(recipe_id: str, recipe: dict):
     except Exception as e:
         logger.error(f"AI error {recipe_id}: {e}")
         await db.recipes.update_one({"id": recipe_id}, {"$set": {"transcription_status": "error", "transcription": f"Errore: {e}"}})
+
+# ================= VIDEO DOWNLOAD & THUMBNAIL =================
+
+THUMB_DIR = ROOT_DIR / "thumbnails"
+THUMB_DIR.mkdir(exist_ok=True)
+DOWNLOAD_DIR = ROOT_DIR / "downloads"
+DOWNLOAD_DIR.mkdir(exist_ok=True)
+
+def generate_thumbnail_from_url(source_url: str, output_path: str) -> bool:
+    """Download video and extract a frame as thumbnail using ffmpeg"""
+    try:
+        with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as tmp:
+            tmp_path = tmp.name
+        ydl_opts = {'quiet': True, 'no_warnings': True, 'format': 'worst[ext=mp4]/worst', 'outtmpl': tmp_path}
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([source_url])
+        # Extract frame at 2 seconds
+        cmd = ['ffmpeg', '-i', tmp_path, '-ss', '2', '-vframes', '1', '-q:v', '3', '-y', output_path]
+        result = subprocess.run(cmd, capture_output=True, timeout=30)
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+        return result.returncode == 0 and os.path.exists(output_path)
+    except Exception as e:
+        logger.error(f"Thumbnail error: {e}")
+        return False
+
+def download_video_to_file(source_url: str, output_path: str) -> bool:
+    """Download video to file"""
+    ydl_opts = {'quiet': True, 'no_warnings': True, 'format': 'best[ext=mp4]/best', 'outtmpl': output_path}
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([source_url])
+        return os.path.exists(output_path)
+    except Exception as e:
+        logger.error(f"Download error: {e}")
+        return False
+
+@api_router.post("/recipes/{recipe_id}/generate-thumbnail")
+async def generate_thumbnail(recipe_id: str, request: Request):
+    """Generate thumbnail from video"""
+    user = await get_current_user(request)
+    recipe = await db.recipes.find_one({"id": recipe_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Ricetta non trovata")
+    
+    thumb_path = str(THUMB_DIR / f"{recipe_id}.jpg")
+    loop = asyncio.get_event_loop()
+    success = await loop.run_in_executor(executor, generate_thumbnail_from_url, recipe["source_url"], thumb_path)
+    
+    if success:
+        # Convert to base64 for mobile
+        import base64
+        with open(thumb_path, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode()
+        thumb_data_url = f"data:image/jpeg;base64,{b64}"
+        await db.recipes.update_one({"id": recipe_id}, {"$set": {"thumbnail_url": thumb_data_url}})
+        return {"success": True, "thumbnail_url": thumb_data_url}
+    
+    return {"success": False, "error": "Impossibile generare thumbnail"}
+
+@api_router.post("/recipes/{recipe_id}/download-video")
+async def download_video_endpoint(recipe_id: str, request: Request):
+    """Download video and return download URL"""
+    user = await get_current_user(request)
+    recipe = await db.recipes.find_one({"id": recipe_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Ricetta non trovata")
+    
+    dl_path = str(DOWNLOAD_DIR / f"{recipe_id}.mp4")
+    
+    # Check if already downloaded
+    if os.path.exists(dl_path):
+        return {"success": True, "download_path": f"/api/videos/{recipe_id}.mp4", "size": os.path.getsize(dl_path)}
+    
+    loop = asyncio.get_event_loop()
+    success = await loop.run_in_executor(executor, download_video_to_file, recipe["source_url"], dl_path)
+    
+    if success:
+        size = os.path.getsize(dl_path)
+        return {"success": True, "download_path": f"/api/videos/{recipe_id}.mp4", "size": size}
+    
+    return {"success": False, "error": "Impossibile scaricare il video. Prova ad aprire il link originale."}
+
+@api_router.get("/videos/{filename}")
+async def serve_video(filename: str):
+    """Serve downloaded video file"""
+    file_path = DOWNLOAD_DIR / filename
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Video non trovato")
+    return FileResponse(str(file_path), media_type="video/mp4", filename=filename)
 
 # ================= VIDEO COMPRESSION =================
 
