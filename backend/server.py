@@ -550,18 +550,28 @@ def download_video_to_file(source_url: str, output_path: str) -> bool:
 
 @api_router.post("/recipes/{recipe_id}/generate-thumbnail")
 async def generate_thumbnail(recipe_id: str, request: Request):
-    """Generate thumbnail from video"""
+    """Generate thumbnail - try auto-extract, or accept user upload"""
     user = await get_current_user(request)
     recipe = await db.recipes.find_one({"id": recipe_id, "user_id": user["user_id"]}, {"_id": 0})
     if not recipe:
         raise HTTPException(status_code=404, detail="Ricetta non trovata")
     
+    # Check if user uploaded a base64 image
+    try:
+        body = await request.json()
+        if body.get("image_base64"):
+            thumb_url = body["image_base64"]
+            await db.recipes.update_one({"id": recipe_id}, {"$set": {"thumbnail_url": thumb_url}})
+            return {"success": True, "thumbnail_url": thumb_url}
+    except Exception:
+        pass
+    
+    # Try auto-extract from video
     thumb_path = str(THUMB_DIR / f"{recipe_id}.jpg")
     loop = asyncio.get_event_loop()
     success = await loop.run_in_executor(executor, generate_thumbnail_from_url, recipe["source_url"], thumb_path)
     
     if success:
-        # Convert to base64 for mobile
         import base64
         with open(thumb_path, "rb") as f:
             b64 = base64.b64encode(f.read()).decode()
@@ -569,30 +579,38 @@ async def generate_thumbnail(recipe_id: str, request: Request):
         await db.recipes.update_one({"id": recipe_id}, {"$set": {"thumbnail_url": thumb_data_url}})
         return {"success": True, "thumbnail_url": thumb_data_url}
     
-    return {"success": False, "error": "Impossibile generare thumbnail"}
+    return {"success": False, "error": "Estrazione automatica non riuscita. Usa 'Scegli dalla Galleria' per caricare uno screenshot."}
 
 @api_router.post("/recipes/{recipe_id}/download-video")
 async def download_video_endpoint(recipe_id: str, request: Request):
-    """Download video and return download URL"""
+    """Get download links for the video"""
     user = await get_current_user(request)
     recipe = await db.recipes.find_one({"id": recipe_id, "user_id": user["user_id"]}, {"_id": 0})
     if not recipe:
         raise HTTPException(status_code=404, detail="Ricetta non trovata")
     
-    dl_path = str(DOWNLOAD_DIR / f"{recipe_id}.mp4")
+    source_url = recipe.get("source_url", "")
+    platform = recipe.get("platform", "")
+    encoded_url = source_url.replace("&", "%26")
     
-    # Check if already downloaded
-    if os.path.exists(dl_path):
-        return {"success": True, "download_path": f"/api/videos/{recipe_id}.mp4", "size": os.path.getsize(dl_path)}
+    # Generate download service URLs
+    download_links = []
+    if platform == "instagram":
+        download_links = [
+            {"name": "SnapInsta", "url": f"https://snapinst.to/?url={encoded_url}", "icon": "download"},
+            {"name": "SaveInsta", "url": f"https://saveinsta.io/?url={encoded_url}", "icon": "cloud-download"},
+            {"name": "Apri Instagram", "url": source_url, "icon": "logo-instagram"},
+        ]
+    elif platform == "facebook":
+        download_links = [
+            {"name": "FBDown", "url": f"https://fbdown.net/?url={encoded_url}", "icon": "download"},
+            {"name": "SaveFrom", "url": f"https://savefrom.net/?url={encoded_url}", "icon": "cloud-download"},
+            {"name": "Apri Facebook", "url": source_url, "icon": "logo-facebook"},
+        ]
+    else:
+        download_links = [{"name": "Apri link", "url": source_url, "icon": "open-outline"}]
     
-    loop = asyncio.get_event_loop()
-    success = await loop.run_in_executor(executor, download_video_to_file, recipe["source_url"], dl_path)
-    
-    if success:
-        size = os.path.getsize(dl_path)
-        return {"success": True, "download_path": f"/api/videos/{recipe_id}.mp4", "size": size}
-    
-    return {"success": False, "error": "Impossibile scaricare il video. Prova ad aprire il link originale."}
+    return {"success": True, "download_links": download_links, "source_url": source_url}
 
 @api_router.get("/videos/{filename}")
 async def serve_video(filename: str):

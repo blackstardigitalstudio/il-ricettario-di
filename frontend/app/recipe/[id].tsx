@@ -7,16 +7,16 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import * as FileSystem from 'expo-file-system';
-import * as Sharing from 'expo-sharing';
-
-const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+import * as ImagePicker from 'expo-image-picker';
 
 interface Recipe {
-  id: string; name: string; folder_id: string | null; subfolder_id: string | null;
-  source_url: string; platform: string; caption: string; video_url: string;
-  thumbnail_url: string; notes: string; transcription: string;
-  transcription_status: string; created_at: string;
+  id: string; name: string; source_url: string; platform: string;
+  caption: string; thumbnail_url: string; notes: string;
+  transcription: string; transcription_status: string; created_at: string;
+}
+
+interface DownloadLink {
+  name: string; url: string; icon: string;
 }
 
 export default function RecipeDetailScreen() {
@@ -25,8 +25,9 @@ export default function RecipeDetailScreen() {
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [loading, setLoading] = useState(true);
   const [transcribing, setTranscribing] = useState(false);
-  const [downloading, setDownloading] = useState(false);
-  const [generatingThumb, setGeneratingThumb] = useState(false);
+  const [uploadingThumb, setUploadingThumb] = useState(false);
+  const [showDownloadModal, setShowDownloadModal] = useState(false);
+  const [downloadLinks, setDownloadLinks] = useState<DownloadLink[]>([]);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editName, setEditName] = useState('');
   const [editCaption, setEditCaption] = useState('');
@@ -34,20 +35,13 @@ export default function RecipeDetailScreen() {
   const [saving, setSaving] = useState(false);
   const [pollingTimer, setPollingTimer] = useState<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => {
-    fetchRecipe();
-    return () => { if (pollingTimer) clearInterval(pollingTimer); };
-  }, [id]);
+  useEffect(() => { fetchRecipe(); return () => { if (pollingTimer) clearInterval(pollingTimer); }; }, [id]);
 
   const fetchRecipe = async () => {
     try {
       const res = await authFetch(`/api/recipes/${id}`);
-      if (res.ok) {
-        setRecipe(await res.json());
-      } else {
-        Alert.alert('Errore', 'Ricetta non trovata');
-        router.back();
-      }
+      if (res.ok) { setRecipe(await res.json()); }
+      else { router.back(); }
     } catch (e) { console.log(e); }
     finally { setLoading(false); }
   };
@@ -62,7 +56,7 @@ export default function RecipeDetailScreen() {
           setRecipe(data);
           if (data.transcription_status !== 'pending') { clearInterval(timer); setTranscribing(false); }
         }
-      } catch (e) { /* ignore */ }
+      } catch (e) { /* */ }
     }, 3000);
     setPollingTimer(timer);
   };
@@ -72,80 +66,53 @@ export default function RecipeDetailScreen() {
     setTranscribing(true);
     try {
       const res = await authFetch(`/api/recipes/${recipe.id}/generate-recipe`, { method: 'POST' });
-      if (res.ok) {
-        Alert.alert('Ricetta AI', 'Generazione in corso...');
-        startPolling();
-      } else { setTranscribing(false); }
+      if (res.ok) { startPolling(); } else { setTranscribing(false); }
     } catch (e) { setTranscribing(false); }
   };
 
-  const downloadVideo = async () => {
+  const openDownloadOptions = async () => {
     if (!recipe) return;
-    setDownloading(true);
     try {
-      // First ask backend to prepare the video
       const res = await authFetch(`/api/recipes/${recipe.id}/download-video`, { method: 'POST' });
       const data = await res.json();
-      
-      if (data.success && data.download_path) {
-        if (Platform.OS === 'web') {
-          // On web, open the download link
-          window.open(`${API_URL}${data.download_path}`, '_blank');
-          Alert.alert('Download', 'Il video si sta scaricando...');
-        } else {
-          // On mobile, download to device
-          const fileUri = FileSystem.documentDirectory + `${recipe.id}.mp4`;
-          const download = await FileSystem.downloadAsync(`${API_URL}${data.download_path}`, fileUri);
-          if (download.status === 200) {
-            // Share/save the file
-            if (await Sharing.isAvailableAsync()) {
-              await Sharing.shareAsync(download.uri, { mimeType: 'video/mp4', dialogTitle: 'Salva video' });
-            } else {
-              Alert.alert('Scaricato!', 'Video salvato sul dispositivo');
-            }
-          }
-        }
-      } else {
-        // Fallback: open original link
-        Alert.alert(
-          'Download non disponibile',
-          'Il video richiede autenticazione. Vuoi aprire il link originale?',
-          [
-            { text: 'Annulla', style: 'cancel' },
-            { text: 'Apri', onPress: () => Linking.openURL(recipe.source_url) },
-          ]
-        );
+      if (data.success) {
+        setDownloadLinks(data.download_links || []);
+        setShowDownloadModal(true);
       }
     } catch (e) {
-      console.log('Download error:', e);
       Linking.openURL(recipe.source_url);
     }
-    finally { setDownloading(false); }
   };
 
-  const generateThumbnail = async () => {
-    if (!recipe) return;
-    setGeneratingThumb(true);
+  const pickCoverImage = async () => {
     try {
-      const res = await authFetch(`/api/recipes/${recipe.id}/generate-thumbnail`, { method: 'POST' });
-      const data = await res.json();
-      if (data.success) {
-        setRecipe({ ...recipe, thumbnail_url: data.thumbnail_url });
-        Alert.alert('Fatto!', 'Screenshot del video generato!');
-      } else {
-        Alert.alert('Errore', data.error || 'Impossibile generare lo screenshot');
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permesso necessario', 'Serve accesso alla galleria.');
+        return;
       }
-    } catch (e) {
-      Alert.alert('Errore', 'Errore di connessione');
-    }
-    finally { setGeneratingThumb(false); }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true, aspect: [16, 9], quality: 0.6, base64: true,
+      });
+      if (!result.canceled && result.assets[0].base64) {
+        setUploadingThumb(true);
+        const b64 = `data:image/jpeg;base64,${result.assets[0].base64}`;
+        const res = await authFetch(`/api/recipes/${recipe!.id}/generate-thumbnail`, {
+          method: 'POST', body: JSON.stringify({ image_base64: b64 }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success) { setRecipe({ ...recipe!, thumbnail_url: data.thumbnail_url }); }
+        }
+        setUploadingThumb(false);
+      }
+    } catch (e) { setUploadingThumb(false); }
   };
 
   const openEditModal = () => {
     if (!recipe) return;
-    setEditName(recipe.name);
-    setEditCaption(recipe.caption);
-    setEditNotes(recipe.notes);
+    setEditName(recipe.name); setEditCaption(recipe.caption); setEditNotes(recipe.notes);
     setShowEditModal(true);
   };
 
@@ -154,11 +121,10 @@ export default function RecipeDetailScreen() {
     setSaving(true);
     try {
       const res = await authFetch(`/api/recipes/${recipe.id}`, {
-        method: 'PUT',
-        body: JSON.stringify({ name: editName.trim(), caption: editCaption.trim(), notes: editNotes.trim() }),
+        method: 'PUT', body: JSON.stringify({ name: editName.trim(), caption: editCaption.trim(), notes: editNotes.trim() }),
       });
       if (res.ok) { setRecipe(await res.json()); setShowEditModal(false); }
-    } catch (e) { Alert.alert('Errore', 'Errore di connessione'); }
+    } catch (e) { /* */ }
     finally { setSaving(false); }
   };
 
@@ -166,156 +132,148 @@ export default function RecipeDetailScreen() {
     Alert.alert('Elimina', 'Sei sicuro?', [
       { text: 'Annulla', style: 'cancel' },
       { text: 'Elimina', style: 'destructive', onPress: async () => {
-          await authFetch(`/api/recipes/${id}`, { method: 'DELETE' }); router.back();
-        }},
+        await authFetch(`/api/recipes/${id}`, { method: 'DELETE' }); router.back();
+      }},
     ]);
   };
 
   if (loading || !recipe) {
-    return <SafeAreaView style={st.container}><View style={st.center}><ActivityIndicator size="large" color="#FF6B35" /></View></SafeAreaView>;
+    return <SafeAreaView style={s.container}><View style={s.center}><ActivityIndicator size="large" color="#FF6B35" /></View></SafeAreaView>;
   }
 
   return (
-    <SafeAreaView style={st.container}>
-      <View style={st.header}>
-        <TouchableOpacity style={st.headerBtn} onPress={() => router.back()} testID="back-btn">
+    <SafeAreaView style={s.container}>
+      {/* Header */}
+      <View style={s.header}>
+        <TouchableOpacity style={s.hBtn} onPress={() => router.back()} testID="back-btn">
           <Ionicons name="arrow-back" size={26} color="#fff" />
         </TouchableOpacity>
-        <Text style={st.headerTitle} numberOfLines={1}>{recipe.name}</Text>
-        <TouchableOpacity style={st.headerBtn} onPress={openEditModal} testID="edit-btn">
+        <Text style={s.hTitle} numberOfLines={1}>{recipe.name}</Text>
+        <TouchableOpacity style={s.hBtn} onPress={openEditModal} testID="edit-btn">
           <Ionicons name="pencil" size={20} color="#FF6B35" />
         </TouchableOpacity>
-        <TouchableOpacity style={st.headerBtn} onPress={deleteRecipe} testID="delete-recipe-btn">
+        <TouchableOpacity style={s.hBtn} onPress={deleteRecipe} testID="delete-btn">
           <Ionicons name="trash-outline" size={20} color="#FF4444" />
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={st.scroll} contentContainerStyle={st.scrollContent}>
-        {/* Thumbnail / Screenshot */}
-        <View style={st.thumbSection}>
+      <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent}>
+        {/* Cover Image / Thumbnail */}
+        <TouchableOpacity onPress={pickCoverImage} activeOpacity={0.8} testID="cover-image-btn">
           {recipe.thumbnail_url ? (
-            <Image source={{ uri: recipe.thumbnail_url }} style={st.thumbImage} resizeMode="cover" />
+            <View style={s.coverWrap}>
+              <Image source={{ uri: recipe.thumbnail_url }} style={s.coverImage} resizeMode="cover" />
+              <View style={s.coverOverlay}>
+                <Ionicons name="camera" size={16} color="#fff" />
+                <Text style={s.coverOverlayText}>Cambia copertina</Text>
+              </View>
+            </View>
           ) : (
-            <View style={st.thumbPlaceholder}>
-              <Ionicons name="image-outline" size={50} color="#555" />
-              <Text style={st.thumbPlaceholderText}>Nessuno screenshot</Text>
+            <View style={s.noCover}>
+              {uploadingThumb ? <ActivityIndicator size="large" color="#FF6B35" /> : (
+                <>
+                  <Ionicons name="image" size={48} color="#FF6B35" />
+                  <Text style={s.noCoverTitle}>Aggiungi copertina</Text>
+                  <Text style={s.noCoverSub}>Fai screenshot del video e caricalo qui</Text>
+                </>
+              )}
             </View>
           )}
-          <TouchableOpacity
-            style={[st.thumbBtn, generatingThumb && st.disabled]}
-            onPress={generateThumbnail}
-            disabled={generatingThumb}
-            testID="generate-thumb-btn"
-          >
-            {generatingThumb ? <ActivityIndicator size="small" color="#fff" /> : (
-              <><Ionicons name="camera" size={16} color="#fff" /><Text style={st.thumbBtnText}>{recipe.thumbnail_url ? 'Rigenera' : 'Genera Screenshot'}</Text></>
-            )}
-          </TouchableOpacity>
-        </View>
+        </TouchableOpacity>
 
         {/* Platform + Date */}
-        <View style={st.platformRow}>
-          <Ionicons name={recipe.platform === 'instagram' ? 'logo-instagram' : 'logo-facebook'} size={20}
+        <View style={s.metaRow}>
+          <Ionicons name={recipe.platform === 'instagram' ? 'logo-instagram' : 'logo-facebook'} size={18}
             color={recipe.platform === 'instagram' ? '#E4405F' : '#1877F2'} />
-          <Text style={st.platformText}>{recipe.platform === 'instagram' ? 'Instagram' : 'Facebook'}</Text>
-          <Text style={st.dateText}>
+          <Text style={s.metaPlatform}>{recipe.platform === 'instagram' ? 'Instagram' : 'Facebook'}</Text>
+          <Text style={s.metaDate}>
             {new Date(recipe.created_at).toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' })}
           </Text>
         </View>
 
-        <Text style={st.recipeName}>{recipe.name}</Text>
+        <Text style={s.recipeName}>{recipe.name}</Text>
 
         {/* Action Buttons */}
-        <View style={st.actionRow}>
-          <TouchableOpacity style={[st.actionBtn, st.downloadBtn, downloading && st.disabled]}
-            onPress={downloadVideo} disabled={downloading} testID="download-video-btn">
-            {downloading ? <ActivityIndicator size="small" color="#fff" /> : (
-              <><Ionicons name="download" size={18} color="#fff" /><Text style={st.actionBtnText}>Scarica Video</Text></>
-            )}
+        <View style={s.actions}>
+          <TouchableOpacity style={[s.actBtn, { backgroundColor: '#4CAF50' }]} onPress={openDownloadOptions} testID="download-btn">
+            <Ionicons name="download" size={20} color="#fff" />
+            <Text style={s.actText}>Scarica Video</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={st.actionBtn} onPress={() => Linking.openURL(recipe.source_url)} testID="open-link-btn">
-            <Ionicons name="open-outline" size={18} color="#fff" />
-            <Text style={st.actionBtnText}>Apri Link</Text>
+          <TouchableOpacity style={[s.actBtn, { backgroundColor: '#FF6B35' }]} onPress={() => Linking.openURL(recipe.source_url)} testID="open-btn">
+            <Ionicons name="play-circle" size={20} color="#fff" />
+            <Text style={s.actText}>Guarda</Text>
           </TouchableOpacity>
         </View>
 
         {/* Caption */}
         {recipe.caption ? (
-          <View style={st.sectionCard}>
-            <View style={st.sectionHeader}>
-              <Ionicons name="document-text-outline" size={18} color="#FF6B35" />
-              <Text style={st.sectionTitle}>Descrizione</Text>
-            </View>
-            <Text style={st.sectionText}>{recipe.caption}</Text>
+          <View style={s.card}>
+            <View style={s.cardH}><Ionicons name="document-text-outline" size={16} color="#FF6B35" /><Text style={s.cardTitle}>Descrizione</Text></View>
+            <Text style={s.cardText}>{recipe.caption}</Text>
           </View>
         ) : null}
 
         {/* Notes */}
-        <View style={st.sectionCard}>
-          <View style={st.sectionHeader}>
-            <Ionicons name="create-outline" size={18} color="#FF6B35" />
-            <Text style={st.sectionTitle}>Note Personali</Text>
-          </View>
-          {recipe.notes ? (
-            <Text style={st.sectionText}>{recipe.notes}</Text>
-          ) : (
-            <Text style={st.emptyNote}>Tocca la matita per aggiungere note.</Text>
-          )}
+        <View style={s.card}>
+          <View style={s.cardH}><Ionicons name="create-outline" size={16} color="#FF6B35" /><Text style={s.cardTitle}>Note Personali</Text></View>
+          {recipe.notes ? <Text style={s.cardText}>{recipe.notes}</Text> : <Text style={s.emptyText}>Tocca ✏️ per aggiungere note</Text>}
         </View>
 
         {/* AI Recipe */}
-        <View style={st.sectionCard}>
-          <View style={st.sectionHeader}>
-            <Ionicons name="sparkles" size={18} color="#FFD700" />
-            <Text style={st.sectionTitle}>Ricetta AI</Text>
-          </View>
-          {recipe.transcription_status === 'done' ? (
-            <Text style={st.sectionText}>{recipe.transcription}</Text>
-          ) : recipe.transcription_status === 'pending' || transcribing ? (
-            <View style={st.loadingRow}>
-              <ActivityIndicator size="small" color="#FF6B35" />
-              <Text style={st.loadingText}>Generazione in corso...</Text>
-            </View>
+        <View style={s.card}>
+          <View style={s.cardH}><Ionicons name="sparkles" size={16} color="#FFD700" /><Text style={s.cardTitle}>Ricetta AI</Text></View>
+          {recipe.transcription_status === 'done' ? <Text style={s.cardText}>{recipe.transcription}</Text>
+          : recipe.transcription_status === 'pending' || transcribing ? (
+            <View style={s.loadRow}><ActivityIndicator size="small" color="#FF6B35" /><Text style={s.loadText}>Generazione...</Text></View>
           ) : recipe.transcription_status === 'error' ? (
-            <View>
-              <Text style={st.errorText}>{recipe.transcription || 'Errore'}</Text>
-              <TouchableOpacity style={st.retryBtn} onPress={generateRecipeAI}>
-                <Text style={st.retryBtnText}>Riprova</Text>
-              </TouchableOpacity>
-            </View>
+            <View><Text style={s.errText}>{recipe.transcription}</Text>
+            <TouchableOpacity style={s.retryBtn} onPress={generateRecipeAI}><Text style={s.retryText}>Riprova</Text></TouchableOpacity></View>
           ) : (
-            <TouchableOpacity style={st.aiBtn} onPress={generateRecipeAI} testID="transcribe-btn">
-              <Ionicons name="sparkles" size={20} color="#fff" />
-              <Text style={st.aiBtnText}>Genera Ricetta con AI</Text>
+            <TouchableOpacity style={s.aiBtn} onPress={generateRecipeAI} testID="ai-btn">
+              <Ionicons name="sparkles" size={18} color="#fff" /><Text style={s.aiBtnText}>Genera Ricetta con AI</Text>
             </TouchableOpacity>
           )}
         </View>
       </ScrollView>
 
+      {/* Download Modal */}
+      <Modal visible={showDownloadModal} transparent animationType="slide">
+        <View style={s.dlOverlay}>
+          <View style={s.dlContent}>
+            <View style={s.dlHeader}>
+              <Text style={s.dlTitle}>Scarica Video</Text>
+              <TouchableOpacity onPress={() => setShowDownloadModal(false)}><Ionicons name="close" size={26} color="#fff" /></TouchableOpacity>
+            </View>
+            <Text style={s.dlSubtitle}>Scegli un servizio per scaricare il video:</Text>
+            {downloadLinks.map((link, i) => (
+              <TouchableOpacity key={i} style={s.dlItem} onPress={() => { setShowDownloadModal(false); Linking.openURL(link.url); }}
+                testID={`download-link-${i}`}>
+                <View style={s.dlIcon}><Ionicons name={link.icon as any} size={22} color="#FF6B35" /></View>
+                <Text style={s.dlName}>{link.name}</Text>
+                <Ionicons name="chevron-forward" size={18} color="#666" />
+              </TouchableOpacity>
+            ))}
+            <Text style={s.dlHint}>Apri il servizio, incolla il link e scarica il video sul tuo dispositivo</Text>
+          </View>
+        </View>
+      </Modal>
+
       {/* Edit Modal */}
       <Modal visible={showEditModal} transparent animationType="slide">
-        <View style={st.modalOverlay}>
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={st.modalKAV}>
-            <View style={st.modalContent}>
-              <View style={st.modalHeader}>
-                <Text style={st.modalTitle}>Modifica Ricetta</Text>
-                <TouchableOpacity onPress={() => setShowEditModal(false)}>
-                  <Ionicons name="close" size={26} color="#fff" />
-                </TouchableOpacity>
-              </View>
+        <View style={s.edOverlay}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={s.edKAV}>
+            <View style={s.edContent}>
+              <View style={s.edHeader}><Text style={s.edTitle}>Modifica</Text>
+                <TouchableOpacity onPress={() => setShowEditModal(false)}><Ionicons name="close" size={26} color="#fff" /></TouchableOpacity></View>
               <ScrollView keyboardShouldPersistTaps="handled">
-                <Text style={st.modalLabel}>Nome *</Text>
-                <TextInput style={st.modalInput} value={editName} onChangeText={setEditName} testID="edit-name-input" />
-                <Text style={st.modalLabel}>Descrizione</Text>
-                <TextInput style={[st.modalInput, st.modalTextArea]} value={editCaption} onChangeText={setEditCaption}
-                  multiline numberOfLines={4} textAlignVertical="top" />
-                <Text style={st.modalLabel}>Note</Text>
-                <TextInput style={[st.modalInput, st.modalTextArea]} value={editNotes} onChangeText={setEditNotes}
-                  multiline numberOfLines={4} textAlignVertical="top" />
-                <TouchableOpacity style={[st.modalSaveBtn, saving && st.disabled]} onPress={saveEdit} disabled={saving} testID="save-edit-btn">
-                  {saving ? <ActivityIndicator color="#fff" /> : (
-                    <><Ionicons name="checkmark" size={22} color="#fff" /><Text style={st.modalSaveBtnText}>Salva</Text></>
-                  )}
+                <Text style={s.edLabel}>Nome *</Text>
+                <TextInput style={s.edInput} value={editName} onChangeText={setEditName} testID="edit-name" />
+                <Text style={s.edLabel}>Descrizione</Text>
+                <TextInput style={[s.edInput, s.edArea]} value={editCaption} onChangeText={setEditCaption} multiline textAlignVertical="top" />
+                <Text style={s.edLabel}>Note</Text>
+                <TextInput style={[s.edInput, s.edArea]} value={editNotes} onChangeText={setEditNotes} multiline textAlignVertical="top" />
+                <TouchableOpacity style={[s.edSave, saving && s.disabled]} onPress={saveEdit} disabled={saving} testID="save-edit">
+                  {saving ? <ActivityIndicator color="#fff" /> : <><Ionicons name="checkmark" size={22} color="#fff" /><Text style={s.edSaveText}>Salva</Text></>}
                 </TouchableOpacity>
               </ScrollView>
             </View>
@@ -326,57 +284,62 @@ export default function RecipeDetailScreen() {
   );
 }
 
-const st = StyleSheet.create({
+const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0f0f0f' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#222' },
-  headerBtn: { padding: 8 },
-  headerTitle: { flex: 1, fontSize: 17, fontWeight: '600', color: '#fff', marginHorizontal: 8 },
-  scroll: { flex: 1 },
-  scrollContent: { paddingBottom: 40 },
-  // Thumbnail
-  thumbSection: { position: 'relative' },
-  thumbImage: { width: '100%', height: 250, backgroundColor: '#1a1a1a' },
-  thumbPlaceholder: { width: '100%', height: 200, backgroundColor: '#1a1a1a', justifyContent: 'center', alignItems: 'center' },
-  thumbPlaceholderText: { color: '#555', fontSize: 14, marginTop: 8 },
-  thumbBtn: {
-    position: 'absolute', bottom: 12, right: 12, flexDirection: 'row', alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.7)', borderRadius: 8, paddingVertical: 8, paddingHorizontal: 12, gap: 6,
-  },
-  thumbBtnText: { color: '#fff', fontSize: 12, fontWeight: '600' },
-  // Platform
-  platformRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, paddingTop: 16 },
-  platformText: { fontSize: 14, color: '#888', fontWeight: '500' },
-  dateText: { fontSize: 12, color: '#666', marginLeft: 'auto' },
-  recipeName: { fontSize: 26, fontWeight: 'bold', color: '#fff', paddingHorizontal: 20, marginTop: 8, marginBottom: 16 },
+  hBtn: { padding: 8 }, hTitle: { flex: 1, fontSize: 17, fontWeight: '600', color: '#fff', marginHorizontal: 8 },
+  scroll: { flex: 1 }, scrollContent: { paddingBottom: 40 },
+  // Cover
+  coverWrap: { position: 'relative' },
+  coverImage: { width: '100%', height: 240, backgroundColor: '#1a1a1a' },
+  coverOverlay: { position: 'absolute', bottom: 12, right: 12, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.65)', borderRadius: 20, paddingVertical: 6, paddingHorizontal: 14, gap: 6 },
+  coverOverlayText: { color: '#fff', fontSize: 12, fontWeight: '600' },
+  noCover: { height: 180, backgroundColor: '#1a1a1a', justifyContent: 'center', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#2a2a2a' },
+  noCoverTitle: { color: '#FF6B35', fontSize: 16, fontWeight: '600', marginTop: 12 },
+  noCoverSub: { color: '#666', fontSize: 13, marginTop: 4 },
+  // Meta
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, paddingTop: 16 },
+  metaPlatform: { fontSize: 14, color: '#888', fontWeight: '500' },
+  metaDate: { fontSize: 12, color: '#666', marginLeft: 'auto' },
+  recipeName: { fontSize: 24, fontWeight: 'bold', color: '#fff', paddingHorizontal: 20, marginTop: 8, marginBottom: 14 },
   // Actions
-  actionRow: { flexDirection: 'row', paddingHorizontal: 20, gap: 10, marginBottom: 16 },
-  actionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FF6B35', borderRadius: 10, paddingVertical: 12, gap: 6 },
-  downloadBtn: { backgroundColor: '#4CAF50' },
-  actionBtnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  actions: { flexDirection: 'row', paddingHorizontal: 20, gap: 10, marginBottom: 16 },
+  actBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 12, paddingVertical: 14, gap: 8 },
+  actText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   disabled: { opacity: 0.5 },
-  // Sections
-  sectionCard: { backgroundColor: '#1a1a1a', borderRadius: 14, padding: 16, marginHorizontal: 20, marginBottom: 12, borderWidth: 1, borderColor: '#2a2a2a' },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
-  sectionTitle: { fontSize: 15, fontWeight: '600', color: '#aaa' },
-  sectionText: { fontSize: 14, color: '#ddd', lineHeight: 22 },
-  emptyNote: { fontSize: 14, color: '#666', fontStyle: 'italic' },
-  loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
-  loadingText: { fontSize: 14, color: '#FF6B35' },
-  errorText: { fontSize: 14, color: '#FF4444', marginBottom: 10 },
+  // Cards
+  card: { backgroundColor: '#1a1a1a', borderRadius: 14, padding: 16, marginHorizontal: 20, marginBottom: 12, borderWidth: 1, borderColor: '#2a2a2a' },
+  cardH: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  cardTitle: { fontSize: 14, fontWeight: '600', color: '#aaa' },
+  cardText: { fontSize: 14, color: '#ddd', lineHeight: 22 },
+  emptyText: { fontSize: 14, color: '#666', fontStyle: 'italic' },
+  loadRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  loadText: { fontSize: 14, color: '#FF6B35' },
+  errText: { fontSize: 14, color: '#FF4444', marginBottom: 10 },
   retryBtn: { backgroundColor: '#333', borderRadius: 8, padding: 10, alignItems: 'center' },
-  retryBtnText: { color: '#FF6B35', fontWeight: '600' },
-  aiBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#6C3DC1', borderRadius: 10, padding: 14, gap: 8 },
+  retryText: { color: '#FF6B35', fontWeight: '600' },
+  aiBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#6C3DC1', borderRadius: 12, padding: 14, gap: 8 },
   aiBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
-  // Modal
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' },
-  modalKAV: { flex: 1, justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: '#1a1a1a', borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '85%', padding: 20 },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  modalTitle: { fontSize: 22, fontWeight: 'bold', color: '#fff' },
-  modalLabel: { fontSize: 13, fontWeight: '600', color: '#aaa', marginBottom: 6, marginTop: 12 },
-  modalInput: { backgroundColor: '#252525', borderRadius: 12, padding: 14, fontSize: 15, color: '#fff', borderWidth: 1, borderColor: '#333' },
-  modalTextArea: { minHeight: 80, paddingTop: 12 },
-  modalSaveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#28a745', borderRadius: 12, padding: 16, marginTop: 20, marginBottom: 20, gap: 8 },
-  modalSaveBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  // Download Modal
+  dlOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' },
+  dlContent: { backgroundColor: '#1a1a1a', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20 },
+  dlHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  dlTitle: { fontSize: 22, fontWeight: 'bold', color: '#fff' },
+  dlSubtitle: { fontSize: 14, color: '#888', marginBottom: 16 },
+  dlItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#252525', borderRadius: 12, padding: 16, marginBottom: 10, gap: 14 },
+  dlIcon: { width: 40, height: 40, borderRadius: 10, backgroundColor: '#FF6B3515', justifyContent: 'center', alignItems: 'center' },
+  dlName: { flex: 1, fontSize: 16, fontWeight: '600', color: '#fff' },
+  dlHint: { fontSize: 12, color: '#666', textAlign: 'center', marginTop: 8, marginBottom: 10 },
+  // Edit Modal
+  edOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' },
+  edKAV: { flex: 1, justifyContent: 'flex-end' },
+  edContent: { backgroundColor: '#1a1a1a', borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '85%', padding: 20 },
+  edHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  edTitle: { fontSize: 22, fontWeight: 'bold', color: '#fff' },
+  edLabel: { fontSize: 13, fontWeight: '600', color: '#aaa', marginBottom: 6, marginTop: 12 },
+  edInput: { backgroundColor: '#252525', borderRadius: 12, padding: 14, fontSize: 15, color: '#fff', borderWidth: 1, borderColor: '#333' },
+  edArea: { minHeight: 80, paddingTop: 12 },
+  edSave: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#28a745', borderRadius: 12, padding: 16, marginTop: 20, marginBottom: 20, gap: 8 },
+  edSaveText: { color: '#fff', fontSize: 16, fontWeight: '600' },
 });
