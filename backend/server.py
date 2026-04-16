@@ -550,23 +550,25 @@ async def auto_generate_title_and_cover(recipe_id: str, current_name: str, capti
         else:
             ai_title = current_name  # Fallback
         
-        # Step 2: Generate AI cover image
+        # Step 2: Generate AI cover image with Gemini (free with Emergent key)
         import base64
-        from emergentintegrations.llm.openai.image_generation import OpenAIImageGeneration
+        from emergentintegrations.llm.chat import LlmChat as ImgChat, UserMessage as ImgMsg
         
-        image_gen = OpenAIImageGeneration(api_key=os.getenv("EMERGENT_LLM_KEY"))
-        
-        img_prompt = f"Foto professionale appetitosa del piatto italiano: {ai_title}. Food photography, vista dall'alto, sfondo scuro elegante, luci calde, alta qualità."
-        
-        images = await image_gen.generate_images(
-            prompt=img_prompt,
-            model="gpt-image-1",
-            number_of_images=1
+        img_chat = ImgChat(
+            api_key=os.getenv("EMERGENT_LLM_KEY"),
+            session_id=f"cover-{recipe_id}-{uuid.uuid4().hex[:6]}",
+            system_message="You are a food photographer. Generate beautiful food images."
         )
+        img_chat.with_model("gemini", "gemini-3.1-flash-image-preview").with_params(modalities=["image", "text"])
+        
+        img_prompt = f"Genera una foto professionale appetitosa del piatto italiano: {ai_title}. Food photography, vista dall'alto, sfondo scuro elegante, luci calde, alta qualità, stile rivista di cucina."
+        
+        text_resp, images = await img_chat.send_message_multimodal_response(ImgMsg(text=img_prompt))
         
         if images and len(images) > 0:
-            image_base64 = base64.b64encode(images[0]).decode('utf-8')
-            thumbnail_url = f"data:image/png;base64,{image_base64}"
+            image_b64 = images[0]['data']
+            mime = images[0].get('mime_type', 'image/png')
+            thumbnail_url = f"data:{mime};base64,{image_b64}"
             await db.recipes.update_one({"id": recipe_id}, {"$set": {"thumbnail_url": thumbnail_url}})
             logger.info(f"Auto-cover generated for {recipe_id}")
         
