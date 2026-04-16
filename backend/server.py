@@ -163,21 +163,34 @@ def extract_video_info(url: str) -> dict:
         return {'success': False, 'error': str(e)}
 
 def download_video_for_transcription(url: str, output_path: str) -> bool:
-    """Download video audio for transcription"""
+    """Download video audio for transcription - optimized for speed"""
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
-        'format': 'bestaudio/best',
+        'format': 'worstaudio/worst',
         'outtmpl': output_path,
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
-            'preferredquality': '128',
+            'preferredquality': '48',
         }],
+        'socket_timeout': 30,
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
+        
+        # Trim to 3 min max and downsample for Whisper (16kHz mono)
+        mp3_path = output_path + '.mp3'
+        if os.path.exists(mp3_path):
+            trimmed = output_path + '_fast.mp3'
+            try:
+                cmd = ['ffmpeg', '-i', mp3_path, '-t', '180', '-ar', '16000', '-ac', '1', '-b:a', '48k', '-y', trimmed]
+                subprocess.run(cmd, capture_output=True, timeout=20)
+                if os.path.exists(trimmed) and os.path.getsize(trimmed) > 0:
+                    os.replace(trimmed, mp3_path)
+            except Exception:
+                pass
         return True
     except Exception as e:
         logger.error(f"Error downloading audio: {str(e)}")

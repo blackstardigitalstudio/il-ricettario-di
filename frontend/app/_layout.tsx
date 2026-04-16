@@ -3,10 +3,11 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Image
+  View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
@@ -107,7 +108,6 @@ export default function RootLayout() {
       await AsyncStorage.setItem('user_name', name);
       setUserName(name);
     } catch (e) {
-      console.error('Error saving profile:', e);
       await AsyncStorage.setItem('user_name', name);
       setUserName(name);
     }
@@ -116,21 +116,28 @@ export default function RootLayout() {
   if (loading) {
     return (
       <View style={{ flex: 1, backgroundColor: '#0f0f0f', justifyContent: 'center', alignItems: 'center' }}>
-        <Ionicons name="restaurant" size={60} color="#FF6B35" />
+        <ActivityIndicator size="large" color="#FF6B35" />
       </View>
     );
   }
 
   if (!userName) {
-    return <WelcomeScreen onComplete={handleWelcome} />;
+    return (
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <StatusBar style="light" />
+        <WelcomeScreen onComplete={handleWelcome} />
+      </GestureHandlerRootView>
+    );
   }
 
   return (
-    <>
+    <GestureHandlerRootView style={{ flex: 1 }}>
       <StatusBar style="light" />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#0f0f0f' } }}>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="(drawer)" options={{ headerShown: false }} />
+        <Stack.Screen name="recipe/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="folder/[id]" options={{ headerShown: false }} />
       </Stack>
-    </>
+    </GestureHandlerRootView>
   );
 }
