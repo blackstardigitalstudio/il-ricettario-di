@@ -550,27 +550,42 @@ async def auto_generate_title_and_cover(recipe_id: str, current_name: str, capti
         else:
             ai_title = current_name  # Fallback
         
-        # Step 2: Generate AI cover image with Gemini (free with Emergent key)
-        import base64
-        from emergentintegrations.llm.chat import LlmChat as ImgChat, UserMessage as ImgMsg
+        # Step 2: Get FREE cover image from Foodish API
+        import httpx as httpx_client
         
-        img_chat = ImgChat(
-            api_key=os.getenv("EMERGENT_LLM_KEY"),
-            session_id=f"cover-{recipe_id}-{uuid.uuid4().hex[:6]}",
-            system_message="You are a food photographer. Generate beautiful food images."
-        )
-        img_chat.with_model("gemini", "gemini-3.1-flash-image-preview").with_params(modalities=["image", "text"])
+        # Map dish name to food category
+        food_categories = {
+            'pasta': ['pasta', 'spaghetti', 'penne', 'rigatoni', 'carbonara', 'amatriciana', 'cacio', 'gricia', 'bolognese', 'lasagna', 'tagliatelle', 'fettuccine', 'linguine', 'bucatini'],
+            'pizza': ['pizza', 'margherita', 'focaccia'],
+            'rice': ['riso', 'risotto', 'arancin'],
+            'dessert': ['tiramisu', 'tiramisù', 'torta', 'dolce', 'panna cotta', 'cannoli', 'biscott', 'gelato', 'crostata', 'cioccolat'],
+            'burger': ['burger', 'hamburger', 'panino'],
+        }
         
-        img_prompt = f"Genera una foto professionale appetitosa del piatto italiano: {ai_title}. Food photography, vista dall'alto, sfondo scuro elegante, luci calde, alta qualità, stile rivista di cucina."
+        title_lower = ai_title.lower()
+        category = 'pasta'  # default
+        for cat, keywords in food_categories.items():
+            if any(kw in title_lower for kw in keywords):
+                category = cat
+                break
         
-        text_resp, images = await img_chat.send_message_multimodal_response(ImgMsg(text=img_prompt))
-        
-        if images and len(images) > 0:
-            image_b64 = images[0]['data']
-            mime = images[0].get('mime_type', 'image/png')
-            thumbnail_url = f"data:{mime};base64,{image_b64}"
-            await db.recipes.update_one({"id": recipe_id}, {"$set": {"thumbnail_url": thumbnail_url}})
-            logger.info(f"Auto-cover generated for {recipe_id}")
+        try:
+            async with httpx_client.AsyncClient() as http:
+                # Get random food image from Foodish (100% free)
+                food_res = await http.get(f'https://foodish-api.com/api/images/{category}', timeout=10)
+                if food_res.status_code == 200:
+                    image_url = food_res.json().get('image', '')
+                    if image_url:
+                        # Download the image and convert to base64
+                        img_res = await http.get(image_url, timeout=15)
+                        if img_res.status_code == 200 and 'image' in img_res.headers.get('content-type', ''):
+                            import base64
+                            img_b64 = base64.b64encode(img_res.content).decode('utf-8')
+                            thumbnail_url = f"data:image/jpeg;base64,{img_b64}"
+                            await db.recipes.update_one({"id": recipe_id}, {"$set": {"thumbnail_url": thumbnail_url}})
+                            logger.info(f"Auto-cover (Foodish/{category}) for {recipe_id}")
+        except Exception as img_err:
+            logger.error(f"Foodish cover error: {img_err}")
         
     except Exception as e:
         logger.error(f"Auto-generate error for {recipe_id}: {e}")
