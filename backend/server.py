@@ -415,6 +415,16 @@ async def get_recipes_count():
     count = await db.recipes.count_documents({})
     return {"count": count}
 
+@api_router.get("/recipes/random")
+async def get_random_recipes(count: int = 3):
+    """Get random recipes for 'What do we cook today?' section"""
+    pipeline = [
+        {"$sample": {"size": count}},
+        {"$project": {"_id": 0}}
+    ]
+    recipes = await db.recipes.aggregate(pipeline).to_list(count)
+    return [Recipe(**r) for r in recipes] if recipes else []
+
 @api_router.get("/recipes/{recipe_id}", response_model=Recipe)
 async def get_recipe(recipe_id: str):
     recipe = await db.recipes.find_one({"id": recipe_id}, {"_id": 0})
@@ -458,82 +468,83 @@ async def delete_recipe(recipe_id: str):
     await db.recipes.delete_one({"id": recipe_id})
     return {"message": "Ricetta eliminata"}
 
-# ================= TRANSCRIPTION =================
+# ================= AI RECIPE GENERATION =================
 
-@api_router.post("/recipes/{recipe_id}/transcribe")
-async def transcribe_recipe(recipe_id: str):
+@api_router.post("/recipes/{recipe_id}/generate-recipe")
+async def generate_recipe(recipe_id: str):
+    """Use AI to generate structured recipe from caption/title"""
     recipe = await db.recipes.find_one({"id": recipe_id}, {"_id": 0})
     if not recipe:
         raise HTTPException(status_code=404, detail="Ricetta non trovata")
     
-    if not recipe.get("source_url"):
-        raise HTTPException(status_code=400, detail="Nessun URL sorgente disponibile")
-    
     # Mark as pending
     await db.recipes.update_one({"id": recipe_id}, {"$set": {"transcription_status": "pending"}})
     
-    # Start transcription in background
-    asyncio.create_task(do_transcription(recipe_id, recipe["source_url"]))
+    # Run AI generation
+    asyncio.create_task(do_ai_recipe_generation(recipe_id, recipe))
     
-    return {"message": "Trascrizione avviata", "status": "pending"}
+    return {"message": "Generazione ricetta avviata", "status": "pending"}
 
-async def do_transcription(recipe_id: str, source_url: str):
-    """Background transcription task"""
+async def do_ai_recipe_generation(recipe_id: str, recipe: dict):
+    """Generate structured recipe using GPT from caption/name/URL"""
     try:
-        loop = asyncio.get_event_loop()
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
         
-        # Download audio
-        with tempfile.TemporaryDirectory() as tmpdir:
-            audio_base = os.path.join(tmpdir, "audio")
-            success = await loop.run_in_executor(executor, download_video_for_transcription, source_url, audio_base)
-            
-            # yt-dlp adds extension
-            audio_path = None
-            for ext in ['.mp3', '.m4a', '.wav', '.webm', '.ogg']:
-                candidate = audio_base + ext
-                if os.path.exists(candidate):
-                    audio_path = candidate
-                    break
-            
-            if not audio_path or not success:
-                await db.recipes.update_one({"id": recipe_id}, {
-                    "$set": {"transcription_status": "error", "transcription": "Impossibile scaricare l'audio del video."}
-                })
-                return
-            
-            # Check file size (max 25MB)
-            file_size = os.path.getsize(audio_path)
-            if file_size > 25 * 1024 * 1024:
-                await db.recipes.update_one({"id": recipe_id}, {
-                    "$set": {"transcription_status": "error", "transcription": "File audio troppo grande (max 25MB)."}
-                })
-                return
-            
-            # Transcribe using Whisper
-            from emergentintegrations.llm.openai import OpenAISpeechToText
-            
-            stt = OpenAISpeechToText(api_key=os.getenv("EMERGENT_LLM_KEY"))
-            
-            with open(audio_path, "rb") as audio_file:
-                response = await stt.transcribe(
-                    file=audio_file,
-                    model="whisper-1",
-                    response_format="json",
-                    language="it",
-                    prompt="Questa è una ricetta di cucina italiana."
-                )
-            
-            transcription_text = response.text if response.text else "Nessun contenuto audio rilevato."
-            
-            await db.recipes.update_one({"id": recipe_id}, {
-                "$set": {"transcription_status": "done", "transcription": transcription_text}
-            })
-            logger.info(f"Transcription completed for recipe {recipe_id}")
-            
-    except Exception as e:
-        logger.error(f"Transcription error for {recipe_id}: {str(e)}")
+        chat = LlmChat(
+            api_key=os.getenv("EMERGENT_LLM_KEY"),
+            session_id=f"recipe-{recipe_id}",
+            system_message="Sei un esperto chef italiano. Genera ricette strutturate in italiano con ingredienti e procedimento. Se ricevi solo il nome di un piatto senza caption, genera comunque la ricetta completa basandoti sulla tua conoscenza. Rispondi SOLO con la ricetta, senza preamboli."
+        ).with_model("gemini", "gemini-2.5-flash")
+        
+        # Build context from whatever info we have
+        context_parts = []
+        if recipe.get("name"):
+            context_parts.append(f"Nome piatto: {recipe['name']}")
+        if recipe.get("caption"):
+            context_parts.append(f"Descrizione dal video: {recipe['caption']}")
+        if recipe.get("source_url"):
+            context_parts.append(f"Fonte: {recipe['source_url']}")
+        
+        context = "\n".join(context_parts) if context_parts else "Ricetta italiana generica"
+        
+        prompt = f"""Basandoti su queste informazioni di un video di ricetta, genera la ricetta completa strutturata:
+
+{context}
+
+Formato richiesto:
+🍽️ NOME PIATTO
+
+📝 INGREDIENTI:
+- (lista ingredienti con quantità)
+
+👨‍🍳 PROCEDIMENTO:
+1. (passi numerati)
+
+⏱️ TEMPO: (tempo stimato)
+👥 PORZIONI: (numero porzioni)
+
+💡 CONSIGLI: (1-2 consigli utili)"""
+
+        user_message = UserMessage(text=prompt)
+        response = await chat.send_message(user_message)
+        
+        transcription_text = response if isinstance(response, str) else str(response)
+        
+        if not transcription_text or len(transcription_text) < 20:
+            transcription_text = "Non è stato possibile generare la ricetta."
+            status = "error"
+        else:
+            status = "done"
+        
         await db.recipes.update_one({"id": recipe_id}, {
-            "$set": {"transcription_status": "error", "transcription": f"Errore: {str(e)}"}
+            "$set": {"transcription_status": status, "transcription": transcription_text}
+        })
+        logger.info(f"AI recipe generation completed for {recipe_id}")
+        
+    except Exception as e:
+        logger.error(f"AI recipe generation error for {recipe_id}: {str(e)}")
+        await db.recipes.update_one({"id": recipe_id}, {
+            "$set": {"transcription_status": "error", "transcription": f"Errore AI: {str(e)}"}
         })
 
 # ================= VIDEO COMPRESSION =================

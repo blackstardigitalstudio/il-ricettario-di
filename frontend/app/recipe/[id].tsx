@@ -71,13 +71,13 @@ export default function RecipeDetailScreen() {
     if (!recipe) return;
     setTranscribing(true);
     try {
-      const res = await fetch(`${API_URL}/api/recipes/${recipe.id}/transcribe`, { method: 'POST' });
+      const res = await fetch(`${API_URL}/api/recipes/${recipe.id}/generate-recipe`, { method: 'POST' });
       const data = await res.json();
       if (res.ok) {
-        Alert.alert('Trascrizione', 'Trascrizione avviata! Attendi qualche secondo...');
+        Alert.alert('Ricetta AI', 'Generazione avviata! Attendi qualche secondo...');
         startPolling();
       } else {
-        Alert.alert('Errore', data.detail || 'Errore nella trascrizione');
+        Alert.alert('Errore', data.detail || 'Errore nella generazione');
         setTranscribing(false);
       }
     } catch (e) {
@@ -184,30 +184,30 @@ export default function RecipeDetailScreen() {
           )}
         </View>
 
-        {/* Transcription */}
+        {/* Transcription / AI Recipe */}
         <View style={st.sectionCard}>
           <View style={st.sectionHeader}>
-            <Ionicons name="mic-outline" size={18} color="#FF6B35" />
-            <Text style={st.sectionTitle}>Trascrizione AI</Text>
+            <Ionicons name="sparkles" size={18} color="#FFD700" />
+            <Text style={st.sectionTitle}>Ricetta AI</Text>
           </View>
           {recipe.transcription_status === 'done' ? (
             <Text style={st.sectionText}>{recipe.transcription}</Text>
           ) : recipe.transcription_status === 'pending' || transcribing ? (
             <View style={st.transcribingRow}>
               <ActivityIndicator size="small" color="#FF6B35" />
-              <Text style={st.transcribingText}>Trascrizione in corso...</Text>
+              <Text style={st.transcribingText}>Generazione in corso...</Text>
             </View>
           ) : recipe.transcription_status === 'error' ? (
             <View>
-              <Text style={st.errorText}>{recipe.transcription || 'Errore nella trascrizione'}</Text>
+              <Text style={st.errorText}>{recipe.transcription || 'Errore'}</Text>
               <TouchableOpacity style={st.retryBtn} onPress={transcribeRecipe}>
                 <Text style={st.retryBtnText}>Riprova</Text>
               </TouchableOpacity>
             </View>
           ) : (
             <TouchableOpacity style={st.transcribeBtn} onPress={transcribeRecipe} testID="transcribe-btn">
-              <Ionicons name="mic" size={20} color="#fff" />
-              <Text style={st.transcribeBtnText}>Trascrivi Ricetta</Text>
+              <Ionicons name="sparkles" size={20} color="#fff" />
+              <Text style={st.transcribeBtnText}>Genera Ricetta con AI</Text>
             </TouchableOpacity>
           )}
         </View>
