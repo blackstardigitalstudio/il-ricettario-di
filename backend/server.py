@@ -663,34 +663,86 @@ async def generate_thumbnail(recipe_id: str, request: Request):
 
 @api_router.post("/recipes/{recipe_id}/download-video")
 async def download_video_endpoint(recipe_id: str, request: Request):
-    """Get download links for the video"""
+    """Get real direct download links via DownloadGram (free)"""
     user = await get_current_user(request)
     recipe = await db.recipes.find_one({"id": recipe_id, "user_id": user["user_id"]}, {"_id": 0})
     if not recipe:
         raise HTTPException(status_code=404, detail="Ricetta non trovata")
     
     source_url = recipe.get("source_url", "")
+    
+    # Try DownloadGram API (free, works for Instagram)
+    try:
+        import re
+        import html as html_lib
+        async with httpx.AsyncClient(timeout=25) as http:
+            res = await http.post('https://api.downloadgram.org/media',
+                json={'url': source_url},
+                headers={'User-Agent': 'Mozilla/5.0', 'Content-Type': 'application/json'})
+            
+            if res.status_code == 200:
+                text = res.text.replace('\x20', ' ').replace('\x22', '"')
+                text = html_lib.unescape(text)
+                
+                cdn_urls = re.findall(r'(https://cdn\.downloadgram\.org/[^\s"\'<>\\]+)', text)
+                
+                video_url = ""
+                thumb_url = ""
+                
+                for u in cdn_urls:
+                    try:
+                        head = await http.head(u, follow_redirects=True, timeout=10)
+                        ct = head.headers.get('content-type', '')
+                        if 'video' in ct:
+                            video_url = u
+                        elif 'image' in ct:
+                            thumb_url = u
+                    except Exception:
+                        pass
+                
+                if video_url:
+                    # Also update thumbnail if we got one and recipe has none
+                    if thumb_url and not recipe.get("thumbnail_url"):
+                        try:
+                            img_res = await http.get(thumb_url, timeout=15)
+                            if img_res.status_code == 200:
+                                import base64
+                                b64 = base64.b64encode(img_res.content).decode('utf-8')
+                                await db.recipes.update_one({"id": recipe_id}, {
+                                    "$set": {"thumbnail_url": f"data:image/jpeg;base64,{b64}"}
+                                })
+                        except Exception:
+                            pass
+                    
+                    return {
+                        "success": True,
+                        "video_url": video_url,
+                        "thumb_url": thumb_url,
+                        "method": "direct"
+                    }
+    except Exception as e:
+        logger.error(f"DownloadGram error: {e}")
+    
+    # Fallback: return external download service links
     platform = recipe.get("platform", "")
     encoded_url = source_url.replace("&", "%26")
-    
-    # Generate download service URLs
-    download_links = []
+    fallback_links = []
     if platform == "instagram":
-        download_links = [
-            {"name": "SnapInsta", "url": f"https://snapinst.to/?url={encoded_url}", "icon": "download"},
-            {"name": "SaveInsta", "url": f"https://saveinsta.io/?url={encoded_url}", "icon": "cloud-download"},
-            {"name": "Apri Instagram", "url": source_url, "icon": "logo-instagram"},
+        fallback_links = [
+            {"name": "SnapInsta", "url": f"https://snapinst.to/?url={encoded_url}"},
+            {"name": "SaveInsta", "url": f"https://saveinsta.io/?url={encoded_url}"},
         ]
     elif platform == "facebook":
-        download_links = [
-            {"name": "FBDown", "url": f"https://fbdown.net/?url={encoded_url}", "icon": "download"},
-            {"name": "SaveFrom", "url": f"https://savefrom.net/?url={encoded_url}", "icon": "cloud-download"},
-            {"name": "Apri Facebook", "url": source_url, "icon": "logo-facebook"},
+        fallback_links = [
+            {"name": "FBDown", "url": f"https://fbdown.net/?url={encoded_url}"},
         ]
-    else:
-        download_links = [{"name": "Apri link", "url": source_url, "icon": "open-outline"}]
     
-    return {"success": True, "download_links": download_links, "source_url": source_url}
+    return {
+        "success": False,
+        "fallback_links": fallback_links,
+        "source_url": source_url,
+        "method": "fallback"
+    }
 
 @api_router.get("/videos/{filename}")
 async def serve_video(filename: str):
