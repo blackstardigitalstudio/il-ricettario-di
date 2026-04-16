@@ -391,14 +391,22 @@ async def create_recipe(recipe: RecipeCreate, request: Request):
     loop = asyncio.get_event_loop()
     result = await loop.run_in_executor(executor, extract_video_info, url)
     caption = recipe.manual_caption if recipe.manual_caption else (result.get('caption', '') if result.get('success') else '')
+    
+    # Use provided name or placeholder
+    name = recipe.name.strip() if recipe.name.strip() else "Nuova Ricetta"
+    
     recipe_obj = Recipe(
-        user_id=user["user_id"], name=recipe.name, folder_id=recipe.folder_id,
+        user_id=user["user_id"], name=name, folder_id=recipe.folder_id,
         subfolder_id=recipe.subfolder_id, source_url=url, platform=platform,
         caption=caption, video_url=result.get('video_url', '') if result.get('success') else '',
         thumbnail_url=result.get('thumbnail_url', '') if result.get('success') else '',
         notes=recipe.notes or '',
     )
     await db.recipes.insert_one(recipe_obj.dict())
+    
+    # Background: auto-generate AI title + cover image
+    asyncio.create_task(auto_generate_title_and_cover(recipe_obj.id, name, caption, url))
+    
     total = await db.recipes.count_documents({"user_id": user["user_id"]})
     if total > 0 and total % 3 == 0:
         asyncio.create_task(compress_old_videos(user["user_id"]))
@@ -509,6 +517,61 @@ async def do_ai_recipe_generation(recipe_id: str, recipe: dict):
     except Exception as e:
         logger.error(f"AI error {recipe_id}: {e}")
         await db.recipes.update_one({"id": recipe_id}, {"$set": {"transcription_status": "error", "transcription": f"Errore: {e}"}})
+
+# ================= AUTO TITLE + COVER IMAGE =================
+
+async def auto_generate_title_and_cover(recipe_id: str, current_name: str, caption: str, source_url: str):
+    """Background task: generate AI title + AI cover image for a recipe"""
+    try:
+        # Step 1: Generate AI title from caption/URL
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        
+        chat = LlmChat(
+            api_key=os.getenv("EMERGENT_LLM_KEY"),
+            session_id=f"title-{recipe_id}-{uuid.uuid4().hex[:6]}",
+            system_message="Sei un esperto di cucina italiana. Rispondi SOLO con il nome del piatto, niente altro. Max 5 parole."
+        ).with_model("gemini", "gemini-2.5-flash")
+        
+        context = ""
+        if caption:
+            context = f"Caption del video: {caption}"
+        elif current_name and current_name != "Nuova Ricetta":
+            context = f"Nome fornito: {current_name}"
+        else:
+            context = f"URL del video: {source_url}"
+        
+        title_prompt = f"Analizza questa ricetta e dammi il nome del piatto in italiano (es: 'Pasta alla Carbonara', 'Tiramisù classico'):\n\n{context}"
+        title_response = await chat.send_message(UserMessage(text=title_prompt))
+        ai_title = str(title_response).strip().strip('"').strip("'") if title_response else ""
+        
+        if ai_title and len(ai_title) > 2 and len(ai_title) < 60:
+            await db.recipes.update_one({"id": recipe_id}, {"$set": {"name": ai_title}})
+            logger.info(f"Auto-title for {recipe_id}: {ai_title}")
+        else:
+            ai_title = current_name  # Fallback
+        
+        # Step 2: Generate AI cover image
+        import base64
+        from emergentintegrations.llm.openai.image_generation import OpenAIImageGeneration
+        
+        image_gen = OpenAIImageGeneration(api_key=os.getenv("EMERGENT_LLM_KEY"))
+        
+        img_prompt = f"Foto professionale appetitosa del piatto italiano: {ai_title}. Food photography, vista dall'alto, sfondo scuro elegante, luci calde, alta qualità."
+        
+        images = await image_gen.generate_images(
+            prompt=img_prompt,
+            model="gpt-image-1",
+            number_of_images=1
+        )
+        
+        if images and len(images) > 0:
+            image_base64 = base64.b64encode(images[0]).decode('utf-8')
+            thumbnail_url = f"data:image/png;base64,{image_base64}"
+            await db.recipes.update_one({"id": recipe_id}, {"$set": {"thumbnail_url": thumbnail_url}})
+            logger.info(f"Auto-cover generated for {recipe_id}")
+        
+    except Exception as e:
+        logger.error(f"Auto-generate error for {recipe_id}: {e}")
 
 # ================= VIDEO DOWNLOAD & THUMBNAIL =================
 

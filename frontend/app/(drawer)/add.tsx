@@ -91,21 +91,20 @@ export default function AddRecipeScreen() {
   };
 
   const saveRecipe = async () => {
-    if (!name.trim()) { Alert.alert('Errore', 'Inserisci un nome per la ricetta'); return; }
     if (!extractedData) { Alert.alert('Errore', 'Prima estrai il video'); return; }
     setSaving(true);
     try {
       const res = await authFetch(`/api/recipes`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: name.trim(), source_url: url.trim(),
+          name: name.trim() || 'Nuova Ricetta', source_url: url.trim(),
           folder_id: selectedFolder, subfolder_id: selectedSubfolder,
           manual_caption: manualCaption.trim() || extractedData.caption || null,
           notes: notes.trim() || null,
         }),
       });
       if (res.ok) {
-        Alert.alert('Successo', 'Ricetta salvata!', [{
+        Alert.alert('Ricetta salvata!', 'Il titolo e la copertina verranno generati automaticamente dall\'AI in pochi secondi.', [{
           text: 'OK', onPress: () => {
             setUrl(''); setName(''); setManualCaption(''); setNotes('');
             setExtractedData(null); setSelectedFolder(null); setSelectedSubfolder(null);
@@ -187,7 +186,7 @@ export default function AddRecipeScreen() {
           {/* Recipe Details */}
           {extractedData && (
             <View style={s.section}>
-              <Text style={s.label}>Nome Ricetta *</Text>
+              <Text style={s.label}>Nome Ricetta (opzionale - AI lo genera)</Text>
               <TextInput style={s.textInput} placeholder="Es: Pasta alla Carbonara" placeholderTextColor="#666"
                 value={name} onChangeText={setName} testID="recipe-name-input" />
 
