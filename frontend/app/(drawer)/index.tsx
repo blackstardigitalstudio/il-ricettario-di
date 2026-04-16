@@ -8,9 +8,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { DrawerActions } from '@react-navigation/native';
 import { useNavigation } from 'expo-router';
+import { authFetch } from '../utils/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+
 
 interface Recipe {
   id: string;
@@ -53,7 +54,7 @@ export default function HomeScreen() {
 
   const fetchRandom = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/recipes/random?count=3`);
+      const res = await authFetch(`/api/recipes/random?count=3`);
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
@@ -67,8 +68,11 @@ export default function HomeScreen() {
 
   const loadAll = async (query?: string) => {
     try {
-      const name = await AsyncStorage.getItem('user_name');
-      setUserName(name || '');
+      const stored = await AsyncStorage.getItem('user_data');
+      if (stored) {
+        const data = JSON.parse(stored);
+        setUserName(data.name?.split(' ')[0] || '');
+      }
     } catch (e) {
       console.log('Error loading name:', e);
     }
@@ -108,7 +112,7 @@ export default function HomeScreen() {
         style: 'destructive',
         onPress: async () => {
           try {
-            await fetch(`${API_URL}/api/recipes/${id}`, { method: 'DELETE' });
+            await authFetch(`/api/recipes/${id}`, { method: 'DELETE' });
             loadAll(searchQuery);
           } catch (e) {
             console.log('Delete error:', e);

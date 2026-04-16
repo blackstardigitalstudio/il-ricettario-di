@@ -1,3 +1,4 @@
+import { authFetch } from '../utils/api';
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView,
@@ -9,7 +10,7 @@ import { useRouter } from 'expo-router';
 import { useNavigation, DrawerActions } from '@react-navigation/native';
 import * as Clipboard from 'expo-clipboard';
 
-const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+
 
 interface Folder { id: string; name: string; }
 interface Subfolder { id: string; folder_id: string; name: string; }
@@ -49,14 +50,14 @@ export default function AddRecipeScreen() {
 
   const fetchFolders = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/folders`);
+      const res = await authFetch(`/api/folders`);
       setFolders(await res.json());
     } catch (e) { console.error(e); }
   };
 
   const fetchSubfolders = async (folderId: string) => {
     try {
-      const res = await fetch(`${API_URL}/api/subfolders?folder_id=${folderId}`);
+      const res = await authFetch(`/api/subfolders?folder_id=${folderId}`);
       setSubfolders(await res.json());
     } catch (e) { console.error(e); }
   };
@@ -71,7 +72,7 @@ export default function AddRecipeScreen() {
     setExtracting(true);
     setExtractedData(null);
     try {
-      const res = await fetch(`${API_URL}/api/extract`, {
+      const res = await authFetch(`/api/extract`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: url.trim() }),
       });
@@ -94,7 +95,7 @@ export default function AddRecipeScreen() {
     if (!extractedData) { Alert.alert('Errore', 'Prima estrai il video'); return; }
     setSaving(true);
     try {
-      const res = await fetch(`${API_URL}/api/recipes`, {
+      const res = await authFetch(`/api/recipes`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: name.trim(), source_url: url.trim(),

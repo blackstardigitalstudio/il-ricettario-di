@@ -1,3 +1,4 @@
+import { authFetch } from '../utils/api';
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator,
@@ -7,7 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
-const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+
 
 interface Recipe {
   id: string; name: string; folder_id: string | null; subfolder_id: string | null;
@@ -36,7 +37,7 @@ export default function RecipeDetailScreen() {
 
   const fetchRecipe = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/recipes/${id}`);
+      const res = await authFetch(`/api/recipes/${id}`);
       if (res.ok) {
         const data = await res.json();
         setRecipe(data);
@@ -53,7 +54,7 @@ export default function RecipeDetailScreen() {
     if (pollingTimer) clearInterval(pollingTimer);
     const timer = setInterval(async () => {
       try {
-        const res = await fetch(`${API_URL}/api/recipes/${id}`);
+        const res = await authFetch(`/api/recipes/${id}`);
         if (res.ok) {
           const data = await res.json();
           setRecipe(data);
@@ -71,7 +72,7 @@ export default function RecipeDetailScreen() {
     if (!recipe) return;
     setTranscribing(true);
     try {
-      const res = await fetch(`${API_URL}/api/recipes/${recipe.id}/generate-recipe`, { method: 'POST' });
+      const res = await authFetch(`/api/recipes/${recipe.id}/generate-recipe`, { method: 'POST' });
       const data = await res.json();
       if (res.ok) {
         Alert.alert('Ricetta AI', 'Generazione avviata! Attendi qualche secondo...');
@@ -98,7 +99,7 @@ export default function RecipeDetailScreen() {
     if (!recipe || !editName.trim()) return;
     setSaving(true);
     try {
-      const res = await fetch(`${API_URL}/api/recipes/${recipe.id}`, {
+      const res = await authFetch(`/api/recipes/${recipe.id}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: editName.trim(), caption: editCaption.trim(), notes: editNotes.trim() }),
       });
@@ -116,7 +117,7 @@ export default function RecipeDetailScreen() {
       { text: 'Annulla', style: 'cancel' },
       {
         text: 'Elimina', style: 'destructive', onPress: async () => {
-          try { await fetch(`${API_URL}/api/recipes/${id}`, { method: 'DELETE' }); router.back(); }
+          try { await authFetch(`/api/recipes/${id}`, { method: 'DELETE' }); router.back(); }
           catch (e) { console.error(e); }
         },
       },

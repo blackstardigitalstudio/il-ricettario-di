@@ -1,3 +1,4 @@
+import { authFetch } from '../utils/api';
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -13,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
-const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+
 
 interface Folder {
   id: string;
@@ -54,7 +55,7 @@ export default function FolderDetailScreen() {
   const fetchData = async () => {
     try {
       // Fetch folder
-      const folderRes = await fetch(`${API_URL}/api/folders/${id}`);
+      const folderRes = await authFetch(`/api/folders/${id}`);
       if (folderRes.ok) {
         const folderData = await folderRes.json();
         setFolder(folderData);
@@ -62,7 +63,7 @@ export default function FolderDetailScreen() {
 
       // Fetch subfolder if specified
       if (subfolder) {
-        const subRes = await fetch(`${API_URL}/api/subfolders/${subfolder}`);
+        const subRes = await authFetch(`/api/subfolders/${subfolder}`);
         if (subRes.ok) {
           const subData = await subRes.json();
           setSubfolderData(subData);
@@ -97,7 +98,7 @@ export default function FolderDetailScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await fetch(`${API_URL}/api/recipes/${recipeId}`, { method: 'DELETE' });
+              await authFetch(`/api/recipes/${recipeId}`, { method: 'DELETE' });
               fetchData();
             } catch (error) {
               console.error('Error deleting recipe:', error);

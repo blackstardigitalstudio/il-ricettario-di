@@ -1,3 +1,4 @@
+import { authFetch } from '../utils/api';
 import React, { useState, useCallback } from 'react';
 import {
   View,
@@ -16,7 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useNavigation, DrawerActions } from '@react-navigation/native';
 
-const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+
 
 interface Folder {
   id: string;
@@ -51,14 +52,14 @@ export default function FoldersScreen() {
 
   const fetchFolders = async () => {
     try {
-      const response = await fetch(`${API_URL}/api/folders`);
+      const response = await authFetch(`/api/folders`);
       const data = await response.json();
       setFolders(data);
 
       // Fetch subfolders for each folder
       const subfoldersMap: { [key: string]: Subfolder[] } = {};
       for (const folder of data) {
-        const subResponse = await fetch(`${API_URL}/api/subfolders?folder_id=${folder.id}`);
+        const subResponse = await authFetch(`/api/subfolders?folder_id=${folder.id}`);
         const subData = await subResponse.json();
         subfoldersMap[folder.id] = subData;
       }
@@ -99,7 +100,7 @@ export default function FoldersScreen() {
     }
     setSaving(true);
     try {
-      const response = await fetch(`${API_URL}/api/folders`, {
+      const response = await authFetch(`/api/folders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newFolderName.trim() }),
@@ -121,7 +122,7 @@ export default function FoldersScreen() {
     if (!editingFolder || !newFolderName.trim()) return;
     setSaving(true);
     try {
-      const response = await fetch(`${API_URL}/api/folders/${editingFolder.id}`, {
+      const response = await authFetch(`/api/folders/${editingFolder.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newFolderName.trim() }),
@@ -150,7 +151,7 @@ export default function FoldersScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await fetch(`${API_URL}/api/folders/${folder.id}`, { method: 'DELETE' });
+              await authFetch(`/api/folders/${folder.id}`, { method: 'DELETE' });
               fetchFolders();
             } catch (error) {
               console.error('Error deleting folder:', error);
@@ -165,7 +166,7 @@ export default function FoldersScreen() {
     if (!newSubfolderName.trim() || !selectedFolderForSubfolder) return;
     setSaving(true);
     try {
-      const response = await fetch(`${API_URL}/api/subfolders`, {
+      const response = await authFetch(`/api/subfolders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -190,7 +191,7 @@ export default function FoldersScreen() {
     if (!editingSubfolder || !newSubfolderName.trim()) return;
     setSaving(true);
     try {
-      const response = await fetch(`${API_URL}/api/subfolders/${editingSubfolder.id}`, {
+      const response = await authFetch(`/api/subfolders/${editingSubfolder.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newSubfolderName.trim() }),
@@ -219,7 +220,7 @@ export default function FoldersScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await fetch(`${API_URL}/api/subfolders/${subfolder.id}`, { method: 'DELETE' });
+              await authFetch(`/api/subfolders/${subfolder.id}`, { method: 'DELETE' });
               fetchFolders();
             } catch (error) {
               console.error('Error deleting subfolder:', error);
