@@ -8,7 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { DrawerActions } from '@react-navigation/native';
 import { useNavigation } from 'expo-router';
-import { authFetch } from '../utils/api';
+import { authFetch } from '../../src/utils/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 
@@ -36,11 +36,11 @@ export default function HomeScreen() {
 
   const fetchRecipes = async (query?: string) => {
     try {
-      let url = `${API_URL}/api/recipes`;
+      let path = '/api/recipes';
       if (query && query.trim()) {
-        url += `?search=${encodeURIComponent(query.trim())}`;
+        path += `?search=${encodeURIComponent(query.trim())}`;
       }
-      const res = await fetch(url);
+      const res = await authFetch(path);
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
@@ -68,11 +68,16 @@ export default function HomeScreen() {
 
   const loadAll = async (query?: string) => {
     try {
-      const stored = await AsyncStorage.getItem('user_data');
-      if (stored) {
-        const data = JSON.parse(stored);
-        setUserName(data.name?.split(' ')[0] || '');
+      // Try user_name first (local mode), then user_data (Google mode)
+      let name = await AsyncStorage.getItem('user_name');
+      if (!name) {
+        const stored = await AsyncStorage.getItem('user_data');
+        if (stored) {
+          const data = JSON.parse(stored);
+          name = data.name?.split(' ')[0] || '';
+        }
       }
+      setUserName(name || '');
     } catch (e) {
       console.log('Error loading name:', e);
     }

@@ -36,20 +36,24 @@ VIDEO_DIR.mkdir(exist_ok=True)
 
 # ================= AUTH HELPERS =================
 
+DEFAULT_LOCAL_USER = {"user_id": "local_user", "email": "", "name": "Utente", "picture": ""}
+
 async def get_current_user(request: Request) -> dict:
-    """Get current authenticated user from session token"""
+    """Get current user - returns local user if no auth token"""
     token = None
     auth_header = request.headers.get("Authorization")
     if auth_header and auth_header.startswith("Bearer "):
         token = auth_header[7:]
     if not token:
         token = request.cookies.get("session_token")
+    
     if not token:
-        raise HTTPException(status_code=401, detail="Non autenticato")
+        # No auth = local user mode
+        return DEFAULT_LOCAL_USER
     
     session = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
     if not session:
-        raise HTTPException(status_code=401, detail="Sessione non valida")
+        return DEFAULT_LOCAL_USER
     
     expires_at = session.get("expires_at")
     if isinstance(expires_at, str):
@@ -57,11 +61,11 @@ async def get_current_user(request: Request) -> dict:
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=timezone.utc)
     if expires_at < datetime.now(timezone.utc):
-        raise HTTPException(status_code=401, detail="Sessione scaduta")
+        return DEFAULT_LOCAL_USER
     
     user = await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0})
     if not user:
-        raise HTTPException(status_code=401, detail="Utente non trovato")
+        return DEFAULT_LOCAL_USER
     return user
 
 # ================= MODELS =================

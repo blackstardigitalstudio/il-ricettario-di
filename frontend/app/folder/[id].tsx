@@ -1,4 +1,4 @@
-import { authFetch } from '../utils/api';
+import { authFetch } from '../../src/utils/api';
 import React, { useState, useEffect } from 'react';
 import {
   View,

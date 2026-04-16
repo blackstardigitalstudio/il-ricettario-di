@@ -5,8 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { DrawerContentScrollView } from '@react-navigation/drawer';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { authFetch } from '../utils/api';
-import { getUser, setGlobalUser } from '../_layout';
+import { authFetch } from '../../src/utils/api';
 
 function CustomDrawerContent(props: any) {
   const router = useRouter();
@@ -22,10 +21,16 @@ function CustomDrawerContent(props: any) {
 
   const loadUser = async () => {
     try {
+      // Try local name first
+      const localName = await AsyncStorage.getItem('user_name');
+      if (localName) {
+        setUserName(localName);
+      }
+      // Then try Google user data
       const stored = await AsyncStorage.getItem('user_data');
       if (stored) {
         const data = JSON.parse(stored);
-        setUserName(data.name || '');
+        if (data.name) setUserName(data.name);
         setUserEmail(data.email || '');
         setUserPicture(data.picture || '');
       }
@@ -68,7 +73,9 @@ function CustomDrawerContent(props: any) {
           } catch (e) { /* ignore */ }
           await AsyncStorage.removeItem('session_token');
           await AsyncStorage.removeItem('user_data');
-          setGlobalUser(null);
+          await AsyncStorage.removeItem('user_name');
+          // Reload app
+          if (typeof window !== 'undefined') window.location.reload();
         },
       },
     ]);
