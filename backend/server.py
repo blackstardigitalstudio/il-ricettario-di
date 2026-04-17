@@ -547,23 +547,57 @@ async def generate_recipe(recipe_id: str, request: Request):
 
 async def do_ai_recipe_generation(recipe_id: str, recipe: dict):
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
         chat = LlmChat(
             api_key=os.getenv("EMERGENT_LLM_KEY"),
             session_id=f"recipe-{recipe_id}-{uuid.uuid4().hex[:6]}",
-            system_message="Sei un esperto chef italiano. Genera ricette strutturate in italiano. Se ricevi solo il nome, genera la ricetta completa dalla tua conoscenza. Rispondi SOLO con la ricetta."
+            system_message="Sei un esperto chef italiano. Analizza l'immagine (se fornita) e la descrizione per generare una ricetta dettagliata e realistica in italiano. Se non hai abbastanza info, usa la tua conoscenza culinaria. Rispondi SOLO con la ricetta."
         ).with_model("gemini", "gemini-2.5-flash")
-        
+
         parts = []
         if recipe.get("name"):
             parts.append(f"Nome: {recipe['name']}")
         if recipe.get("caption"):
             parts.append(f"Descrizione: {recipe['caption']}")
+        if recipe.get("notes"):
+            parts.append(f"Note utente: {recipe['notes']}")
         context = "\n".join(parts) or "Ricetta italiana"
-        
-        prompt = f"""Genera la ricetta completa:\n\n{context}\n\nFormato:\n🍽️ NOME\n\n📝 INGREDIENTI:\n- (lista con quantità)\n\n👨‍🍳 PROCEDIMENTO:\n1. (passi)\n\n⏱️ TEMPO:\n👥 PORZIONI:\n💡 CONSIGLI:"""
-        
-        response = await chat.send_message(UserMessage(text=prompt))
+
+        prompt = f"""Analizza questa ricetta (e l'immagine se fornita) e genera la ricetta completa:
+
+{context}
+
+Formato richiesto:
+🍽️ NOME DEL PIATTO
+
+📝 INGREDIENTI:
+- (lista completa con quantità precise)
+
+👨‍🍳 PROCEDIMENTO:
+1. (passo dettagliato)
+2. ...
+
+⏱️ TEMPO DI PREPARAZIONE:
+🔥 TEMPO DI COTTURA:
+👥 PORZIONI:
+💡 CONSIGLI DELLO CHEF:"""
+
+        # Try to include the recipe thumbnail as visual context for AI
+        msg_content: list = [prompt]
+        try:
+            thumb = recipe.get("thumbnail_url", "")
+            if thumb and thumb.startswith("data:image"):
+                header, b64data = thumb.split(",", 1)
+                mime = header.split(";")[0].replace("data:", "")
+                msg_content.append(ImageContent(image_base64=b64data, mime_type=mime))
+        except Exception as img_err:
+            logger.warning(f"AI image attach err: {img_err}")
+
+        if len(msg_content) > 1:
+            response = await chat.send_message(UserMessage(content=msg_content))
+        else:
+            response = await chat.send_message(UserMessage(text=prompt))
+
         text = str(response) if response else ""
         status = "done" if len(text) > 20 else "error"
         await db.recipes.update_one({"id": recipe_id}, {"$set": {"transcription_status": status, "transcription": text or "Errore"}})
@@ -592,33 +626,28 @@ def _ytdlp_info(url: str, cookiefile: Optional[str] = None) -> dict:
 
 
 async def extract_real_media(source_url: str, user_id: str = "local_user") -> dict:
-    """Try multiple methods to extract REAL caption + thumbnail from video (no invented content)"""
-    result = {"caption": "", "thumbnail_bytes": None, "thumbnail_mime": "image/jpeg"}
+    """Try multiple methods to extract REAL caption + thumbnail from video.
+    Strategy:
+      1. yt-dlp metadata (caption + thumbnail URL, if not blocked)
+      2. OG scraping from public page
+      3. DownloadGram API (Instagram-specific)
+      4. Download video via external service + ffmpeg frame extraction (guaranteed REAL frame)
+    """
+    result = {"caption": "", "thumbnail_bytes": None, "thumbnail_mime": "image/jpeg", "video_url": ""}
     import re
     import html as html_lib
 
-    # Prepare user cookies if available (for Instagram auth)
-    cookiefile = None
-    ig_cookies = None
-    if 'instagram' in source_url.lower():
-        ig_cookies = await _get_user_ig_cookies(user_id)
-        if ig_cookies:
-            cookiefile = str(IG_COOKIE_DIR / f"{user_id}.txt")
-            try:
-                _write_cookies_netscape(ig_cookies, cookiefile)
-                logger.info(f"Using user IG cookies for {user_id}")
-            except Exception as e:
-                logger.error(f"Cookie write error: {e}")
-                cookiefile = None
-
-    # Method 1: yt-dlp (best when not rate-limited, or with cookies)
+    # Method 1: yt-dlp (best when not rate-limited)
     try:
         loop = asyncio.get_event_loop()
-        info = await loop.run_in_executor(executor, _ytdlp_info, source_url, cookiefile)
+        info = await loop.run_in_executor(executor, _ytdlp_info, source_url, None)
         if info:
             desc = info.get('description') or info.get('title') or ''
             if desc and not result['caption']:
                 result['caption'] = desc.strip()
+            # Remember direct video url from yt-dlp for frame extraction
+            if info.get('url'):
+                result['video_url'] = info['url']
             thumb_url = info.get('thumbnail') or ''
             if not thumb_url and info.get('thumbnails'):
                 thumbs = info.get('thumbnails') or []
@@ -626,11 +655,9 @@ async def extract_real_media(source_url: str, user_id: str = "local_user") -> di
                     thumb_url = thumbs[-1].get('url', '')
             if thumb_url:
                 try:
-                    headers = {'User-Agent': 'Mozilla/5.0'}
-                    # Use IG cookies for thumbnail CDN too (some require auth)
-                    cookies_dict = ig_cookies if ig_cookies else None
-                    async with httpx.AsyncClient(cookies=cookies_dict) as http:
-                        r = await http.get(thumb_url, timeout=15, follow_redirects=True, headers=headers)
+                    async with httpx.AsyncClient() as http:
+                        r = await http.get(thumb_url, timeout=15, follow_redirects=True,
+                                           headers={'User-Agent': 'Mozilla/5.0'})
                         if r.status_code == 200 and 'image' in r.headers.get('content-type', ''):
                             result['thumbnail_bytes'] = r.content
                             result['thumbnail_mime'] = r.headers.get('content-type', 'image/jpeg').split(';')[0]
@@ -642,9 +669,7 @@ async def extract_real_media(source_url: str, user_id: str = "local_user") -> di
     # Method 2: Scrape public page OG tags (fallback)
     if not result['caption'] or not result['thumbnail_bytes']:
         try:
-            # Use user cookies if available (logged-in view may work)
-            cookies_dict = ig_cookies if ig_cookies else None
-            async with httpx.AsyncClient(cookies=cookies_dict) as http:
+            async with httpx.AsyncClient() as http:
                 page = await http.get(source_url, timeout=15, follow_redirects=True,
                     headers={
                         'User-Agent': 'Mozilla/5.0 (compatible; facebookexternalhit/1.1; +http://www.facebook.com/externalhit_uatext.php)',
@@ -672,8 +697,8 @@ async def extract_real_media(source_url: str, user_id: str = "local_user") -> di
         except Exception as e:
             logger.warning(f"OG scrape error: {e}")
 
-    # Method 3: DownloadGram API (Instagram-specific fallback, no auth)
-    if 'instagram' in source_url.lower() and (not result['caption'] or not result['thumbnail_bytes']):
+    # Method 3: DownloadGram API (Instagram-specific, no auth)
+    if 'instagram' in source_url.lower() and (not result['caption'] or not result['thumbnail_bytes'] or not result['video_url']):
         try:
             async with httpx.AsyncClient(timeout=25) as http:
                 res = await http.post('https://api.downloadgram.org/media',
@@ -681,35 +706,76 @@ async def extract_real_media(source_url: str, user_id: str = "local_user") -> di
                     headers={'User-Agent': 'Mozilla/5.0', 'Content-Type': 'application/json'})
                 if res.status_code == 200:
                     text = html_lib.unescape(res.text.replace('\x20', ' ').replace('\x22', '"'))
-                    if not result['caption']:
-                        m_desc = re.search(r'description["\']?\s*[:=]\s*["\']([^"\']{10,})', text)
-                        if m_desc:
-                            result['caption'] = m_desc.group(1).strip()
-                    if not result['thumbnail_bytes']:
-                        cdn_urls = re.findall(r'(https://cdn\.downloadgram\.org/[^\s"\'<>\\]+)', text)
-                        for u in cdn_urls:
-                            try:
-                                head = await http.head(u, follow_redirects=True, timeout=10)
-                                ct = head.headers.get('content-type', '')
-                                if 'image' in ct:
-                                    r = await http.get(u, timeout=15, follow_redirects=True)
-                                    if r.status_code == 200:
-                                        result['thumbnail_bytes'] = r.content
-                                        result['thumbnail_mime'] = 'image/jpeg'
-                                        break
-                            except Exception:
-                                pass
+                    cdn_urls = re.findall(r'(https://cdn\.downloadgram\.org/[^\s"\'<>\\]+)', text)
+                    for u in cdn_urls:
+                        try:
+                            head = await http.head(u, follow_redirects=True, timeout=10)
+                            ct = head.headers.get('content-type', '')
+                            if 'video' in ct and not result['video_url']:
+                                result['video_url'] = u
+                            elif 'image' in ct and not result['thumbnail_bytes']:
+                                r = await http.get(u, timeout=15, follow_redirects=True)
+                                if r.status_code == 200:
+                                    result['thumbnail_bytes'] = r.content
+                                    result['thumbnail_mime'] = 'image/jpeg'
+                        except Exception:
+                            pass
         except Exception as e:
             logger.warning(f"DownloadGram media error: {e}")
 
-    # Cleanup cookie file
-    if cookiefile and os.path.exists(cookiefile):
+    # Method 4: LAST RESORT - if we still have no thumbnail, but we have a video URL,
+    # download a chunk and extract a frame with ffmpeg
+    if not result['thumbnail_bytes'] and result['video_url']:
         try:
-            os.unlink(cookiefile)
-        except Exception:
-            pass
+            loop = asyncio.get_event_loop()
+            frame_bytes = await loop.run_in_executor(executor, _extract_frame_from_video_url, result['video_url'])
+            if frame_bytes:
+                result['thumbnail_bytes'] = frame_bytes
+                result['thumbnail_mime'] = 'image/jpeg'
+                logger.info("Thumbnail extracted from video frame via ffmpeg")
+        except Exception as e:
+            logger.warning(f"ffmpeg frame extract error: {e}")
 
     return result
+
+
+def _extract_frame_from_video_url(video_url: str) -> Optional[bytes]:
+    """Download first few MB of video and extract a frame with ffmpeg."""
+    try:
+        with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as tmp_vid:
+            vid_path = tmp_vid.name
+        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp_img:
+            img_path = tmp_img.name
+        # Download the video (partial or full, up to 20 MB)
+        import httpx as httpx_sync
+        with httpx_sync.Client(timeout=60, follow_redirects=True) as c:
+            with c.stream('GET', video_url, headers={'User-Agent': 'Mozilla/5.0'}) as resp:
+                if resp.status_code != 200:
+                    return None
+                written = 0
+                max_bytes = 20 * 1024 * 1024
+                with open(vid_path, 'wb') as f:
+                    for chunk in resp.iter_bytes(chunk_size=65536):
+                        f.write(chunk)
+                        written += len(chunk)
+                        if written >= max_bytes:
+                            break
+        # Extract frame at 1.5s
+        cmd = ['ffmpeg', '-ss', '1.5', '-i', vid_path, '-vframes', '1', '-q:v', '3', '-y', img_path]
+        subprocess.run(cmd, capture_output=True, timeout=30)
+        if os.path.exists(img_path) and os.path.getsize(img_path) > 1000:
+            with open(img_path, 'rb') as f:
+                data = f.read()
+        else:
+            data = None
+        # cleanup
+        for p in [vid_path, img_path]:
+            try: os.unlink(p)
+            except Exception: pass
+        return data
+    except Exception as e:
+        logger.warning(f"frame extract err: {e}")
+        return None
 
 
 async def auto_generate_title_and_cover(recipe_id: str, current_name: str, caption: str, source_url: str, user_id: str = "local_user"):

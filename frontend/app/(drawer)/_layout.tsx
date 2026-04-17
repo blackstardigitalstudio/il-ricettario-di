@@ -175,24 +175,6 @@ function CustomDrawerContent(props: any) {
         </TouchableOpacity>
       ))}
 
-      <View style={ds.sep} />
-
-      {/* Instagram Connection */}
-      <TouchableOpacity style={ds.menuItem} onPress={handleIgToggle} testID="drawer-instagram">
-        <View style={[ds.iconCircle, { backgroundColor: '#E4405F20' }]}>
-          <Ionicons name="logo-instagram" size={22} color="#E4405F" />
-        </View>
-        <Text style={ds.menuLabel}>{igConnected ? T('ig_connected') : T('ig_connect')}</Text>
-        {igConnected ? (
-          <View style={[ds.langInline, { backgroundColor: '#28A74520' }]}>
-            <Ionicons name="checkmark-circle" size={14} color="#28A745" />
-            {igUsername ? <Text style={[ds.langInlineName, { color: '#28A745' }]}>@{igUsername}</Text> : null}
-          </View>
-        ) : (
-          <Ionicons name="chevron-forward" size={18} color="#666" />
-        )}
-      </TouchableOpacity>
-
       {/* Language Selector */}
       <TouchableOpacity style={ds.menuItem} onPress={() => setShowLangPicker(true)} testID="drawer-language">
         <View style={[ds.iconCircle, { backgroundColor: '#1877F220' }]}>
