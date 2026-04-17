@@ -190,6 +190,146 @@ def test_recipes_crud(folder_id, sub_id):
     record("GET deleted recipe -> 404", ok, f"status={r.status_code}")
 
 
+def test_new_recipe_features():
+    """Tests for the new editor + tags/difficulty/times/favorites feature set."""
+    # A) POST /api/recipes with defaults
+    payload = {
+        "name": "Pasta al Pomodoro",
+        "source_url": "https://www.instagram.com/reel/TESTVAL/",
+        "manual_caption": "Pomodoro fresco, basilico, aglio.",
+    }
+    r = requests.post(f"{BASE}/recipes", json=payload)
+    body = safe_json(r)
+    has_defaults = (
+        isinstance(body, dict)
+        and body.get("tags") == []
+        and body.get("difficulty") == ""
+        and body.get("prep_time") == 0
+        and body.get("cook_time") == 0
+        and body.get("is_favorite") is False
+    )
+    ok = r.status_code == 200 and has_defaults
+    record("A) POST /api/recipes has new fields with defaults", ok,
+           f"status={r.status_code} tags={body.get('tags') if isinstance(body, dict) else None} "
+           f"difficulty={body.get('difficulty') if isinstance(body, dict) else None} "
+           f"prep_time={body.get('prep_time') if isinstance(body, dict) else None} "
+           f"cook_time={body.get('cook_time') if isinstance(body, dict) else None} "
+           f"is_favorite={body.get('is_favorite') if isinstance(body, dict) else None}")
+    if not ok:
+        return
+    recipe_id = body["id"]
+    # initial transcription should be empty and status 'none'
+    ok_init_trans = body.get("transcription", "") == "" and body.get("transcription_status") == "none"
+    record("A) initial transcription empty & status='none'", ok_init_trans,
+           f"transcription={body.get('transcription')!r} status={body.get('transcription_status')!r}")
+
+    # B) PUT all new fields + transcription -> status auto done
+    put_payload = {
+        "tags": ["vegetariano", "veloce"],
+        "difficulty": "medium",
+        "prep_time": 15,
+        "cook_time": 25,
+        "is_favorite": True,
+        "transcription": "Manual recipe text",
+    }
+    r = requests.put(f"{BASE}/recipes/{recipe_id}", json=put_payload)
+    body = safe_json(r)
+    ok = (
+        r.status_code == 200
+        and isinstance(body, dict)
+        and body.get("tags") == ["vegetariano", "veloce"]
+        and body.get("difficulty") == "medium"
+        and body.get("prep_time") == 15
+        and body.get("cook_time") == 25
+        and body.get("is_favorite") is True
+        and body.get("transcription") == "Manual recipe text"
+        and body.get("transcription_status") == "done"
+    )
+    record("B) PUT new fields persist + transcription_status='done'", ok,
+           f"status={r.status_code} body={ {k: body.get(k) for k in ['tags','difficulty','prep_time','cook_time','is_favorite','transcription','transcription_status']} if isinstance(body, dict) else body}")
+
+    # C) GET /api/recipes?favorites=true contains recipe
+    r = requests.get(f"{BASE}/recipes", params={"favorites": "true"})
+    body = safe_json(r)
+    ok = r.status_code == 200 and isinstance(body, list) and any(x.get("id") == recipe_id for x in body)
+    record("C) GET /api/recipes?favorites=true includes favored recipe", ok,
+           f"status={r.status_code} count={len(body) if isinstance(body, list) else 'NA'}")
+    # also unfiltered GET must include it
+    r = requests.get(f"{BASE}/recipes")
+    body = safe_json(r)
+    ok = r.status_code == 200 and isinstance(body, list) and any(x.get("id") == recipe_id for x in body)
+    record("C) GET /api/recipes (no filter) includes favored recipe", ok,
+           f"status={r.status_code}")
+    # also: every recipe returned under favorites=true has is_favorite True
+    r = requests.get(f"{BASE}/recipes", params={"favorites": "true"})
+    body = safe_json(r)
+    ok = r.status_code == 200 and isinstance(body, list) and all(x.get("is_favorite") is True for x in body)
+    record("C) all entries in favorites=true have is_favorite=true", ok,
+           f"non_fav_count={sum(1 for x in (body or []) if not x.get('is_favorite'))}")
+
+    # Toggle is_favorite=false
+    r = requests.put(f"{BASE}/recipes/{recipe_id}", json={"is_favorite": False})
+    body = safe_json(r)
+    ok = r.status_code == 200 and isinstance(body, dict) and body.get("is_favorite") is False
+    record("C) PUT is_favorite=false", ok, f"status={r.status_code}")
+
+    r = requests.get(f"{BASE}/recipes", params={"favorites": "true"})
+    body = safe_json(r)
+    ok = r.status_code == 200 and isinstance(body, list) and not any(x.get("id") == recipe_id for x in body)
+    record("C) favorites=true excludes after toggle", ok,
+           f"status={r.status_code} count={len(body) if isinstance(body, list) else 'NA'}")
+
+    # D) Partial update: only tags should change
+    # First re-fetch current state
+    r = requests.get(f"{BASE}/recipes/{recipe_id}")
+    before = safe_json(r) or {}
+    r = requests.put(f"{BASE}/recipes/{recipe_id}", json={"tags": ["dolce"]})
+    after = safe_json(r) or {}
+    ok = (
+        r.status_code == 200
+        and after.get("tags") == ["dolce"]
+        and after.get("difficulty") == before.get("difficulty")
+        and after.get("prep_time") == before.get("prep_time")
+        and after.get("cook_time") == before.get("cook_time")
+        and after.get("is_favorite") == before.get("is_favorite")
+        and after.get("transcription") == before.get("transcription")
+        and after.get("transcription_status") == before.get("transcription_status")
+    )
+    record("D) Partial PUT (only tags) leaves other fields unchanged", ok,
+           f"before={ {k: before.get(k) for k in ['tags','difficulty','prep_time','cook_time','is_favorite']} } "
+           f"after={ {k: after.get(k) for k in ['tags','difficulty','prep_time','cook_time','is_favorite']} }")
+
+    # E) DELETE
+    r = requests.delete(f"{BASE}/recipes/{recipe_id}")
+    body = safe_json(r)
+    ok = r.status_code == 200 and body and body.get("message") == "Ricetta eliminata"
+    record("E) DELETE test recipe", ok, f"status={r.status_code} body={body}")
+    r = requests.get(f"{BASE}/recipes/{recipe_id}")
+    ok = r.status_code == 404
+    record("E) GET deleted recipe -> 404", ok, f"status={r.status_code}")
+
+
+def test_transcription_empty_does_not_flip_status():
+    """Edge case: empty/whitespace-only transcription should NOT flip status to 'done'."""
+    r = requests.post(f"{BASE}/recipes", json={
+        "name": "Test Empty Transcription",
+        "source_url": "https://www.instagram.com/reel/EMPTYTRANS/",
+        "manual_caption": "x",
+    })
+    if r.status_code != 200:
+        record("Edge: create recipe for empty-transcription", False, f"status={r.status_code}")
+        return
+    rid = r.json()["id"]
+    try:
+        r = requests.put(f"{BASE}/recipes/{rid}", json={"transcription": "   "})
+        body = safe_json(r) or {}
+        ok = body.get("transcription_status") != "done"
+        record("Edge: whitespace-only transcription keeps status != 'done'",
+               ok, f"status_field={body.get('transcription_status')!r}")
+    finally:
+        requests.delete(f"{BASE}/recipes/{rid}")
+
+
 def test_invalid_url_on_recipe():
     r = requests.post(f"{BASE}/recipes", json={"name": "x", "source_url": "https://fake.invalid"})
     ok = r.status_code == 400
@@ -260,6 +400,10 @@ def main():
             test_recipes_crud(folder_id, sub_id)
 
         test_delete_folder_cascade()
+
+        # NEW FEATURE TESTS (tags, difficulty, times, favorites, transcription auto-done)
+        test_new_recipe_features()
+        test_transcription_empty_does_not_flip_status()
     except Exception as e:
         record("UNEXPECTED EXCEPTION", False, repr(e))
     finally:

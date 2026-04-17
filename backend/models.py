@@ -1,7 +1,7 @@
 """Pydantic models for requests / db objects."""
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import List, Optional
 from pydantic import BaseModel, Field
 
 
@@ -61,6 +61,11 @@ class Recipe(BaseModel):
     notes: str = ""
     transcription: str = ""
     transcription_status: str = "none"
+    tags: List[str] = Field(default_factory=list)
+    difficulty: str = ""  # "easy" | "medium" | "hard" | ""
+    prep_time: int = 0  # minutes
+    cook_time: int = 0  # minutes
+    is_favorite: bool = False
     video_compressed: bool = False
     local_video_path: str = ""
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -82,6 +87,12 @@ class RecipeUpdate(BaseModel):
     subfolder_id: Optional[str] = None
     caption: Optional[str] = None
     notes: Optional[str] = None
+    transcription: Optional[str] = None
+    tags: Optional[List[str]] = None
+    difficulty: Optional[str] = None
+    prep_time: Optional[int] = None
+    cook_time: Optional[int] = None
+    is_favorite: Optional[bool] = None
 
 
 class ExtractRequest(BaseModel):

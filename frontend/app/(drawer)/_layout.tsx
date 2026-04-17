@@ -88,6 +88,7 @@ function CustomDrawerContent(props: any) {
     { key: 'index', icon: 'home', label: T('home'), color: '#FF6B35' },
     { key: 'add', icon: 'add-circle', label: T('add_recipe'), color: '#28a745' },
     { key: 'folders', icon: 'folder', label: T('folders'), color: '#6C3DC1' },
+    { key: 'favorites', icon: 'star', label: T('favorites'), color: '#FFD700' },
   ];
 
   return (
@@ -256,6 +257,7 @@ export default function DrawerLayout() {
       <Drawer.Screen name="index" options={{ title: 'Home' }} />
       <Drawer.Screen name="add" options={{ title: 'Add' }} />
       <Drawer.Screen name="folders" options={{ title: 'Folders' }} />
+      <Drawer.Screen name="favorites" options={{ title: 'Favorites' }} />
     </Drawer>
   );
 }

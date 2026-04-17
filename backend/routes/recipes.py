@@ -64,13 +64,16 @@ async def get_recipes_count(request: Request):
 
 @router.get("/recipes")
 async def get_recipes(request: Request, folder_id: Optional[str] = None,
-                     subfolder_id: Optional[str] = None, search: Optional[str] = None):
+                     subfolder_id: Optional[str] = None, search: Optional[str] = None,
+                     favorites: Optional[bool] = None):
     user = await get_current_user(request)
     q = {"user_id": user["user_id"]}
     if folder_id:
         q["folder_id"] = folder_id
     if subfolder_id:
         q["subfolder_id"] = subfolder_id
+    if favorites:
+        q["is_favorite"] = True
     if search:
         sr = {"$regex": search, "$options": "i"}
         q["$or"] = [{"name": sr}, {"caption": sr}, {"notes": sr}, {"transcription": sr}]
@@ -98,6 +101,16 @@ async def update_recipe(recipe_id: str, update: RecipeUpdate, request: Request):
     if update.subfolder_id is not None: data["subfolder_id"] = update.subfolder_id
     if update.caption is not None: data["caption"] = update.caption
     if update.notes is not None: data["notes"] = update.notes
+    if update.transcription is not None:
+        data["transcription"] = update.transcription
+        # When user manually edits the recipe, mark as done so the UI shows it
+        if update.transcription.strip():
+            data["transcription_status"] = "done"
+    if update.tags is not None: data["tags"] = update.tags
+    if update.difficulty is not None: data["difficulty"] = update.difficulty
+    if update.prep_time is not None: data["prep_time"] = update.prep_time
+    if update.cook_time is not None: data["cook_time"] = update.cook_time
+    if update.is_favorite is not None: data["is_favorite"] = update.is_favorite
     await db.recipes.update_one({"id": recipe_id}, {"$set": data})
     return await db.recipes.find_one({"id": recipe_id}, {"_id": 0})
 

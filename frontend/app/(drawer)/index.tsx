@@ -23,6 +23,7 @@ interface Recipe {
   notes: string;
   transcription_status: string;
   created_at: string;
+  is_favorite?: boolean;
 }
 
 export default function HomeScreen() {
@@ -312,6 +313,9 @@ export default function HomeScreen() {
                   <Text style={st.recipeName} numberOfLines={1}>
                     {recipe.name}
                   </Text>
+                  {recipe.is_favorite ? (
+                    <Ionicons name="star" size={14} color="#FFD700" />
+                  ) : null}
                 </View>
                 <Text style={st.recipeCaption} numberOfLines={2}>
                   {recipe.caption || T('no_description')}

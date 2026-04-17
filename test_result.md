@@ -156,7 +156,7 @@ backend:
   - task: "Recipe CRUD Operations"
     implemented: true
     working: true
-    file: "backend/server.py"
+    file: "backend/routes/recipes.py"
     stuck_count: 0
     priority: "high"
     needs_retesting: false
@@ -164,6 +164,9 @@ backend:
       - working: true
         agent: "testing"
         comment: "All recipe operations working: POST /api/recipes creates recipe with manual caption, GET /api/recipes retrieves list, PUT /api/recipes/{id} updates recipe name, DELETE /api/recipes/{id} deletes recipe successfully"
+      - working: true
+        agent: "testing"
+        comment: "NEW FEATURES REGRESSION (2026-04-17) PASSED 41/41. A) POST /api/recipes returns new default fields: tags=[], difficulty='', prep_time=0, cook_time=0, is_favorite=false, transcription='', transcription_status='none'. B) PUT with {tags,difficulty,prep_time,cook_time,is_favorite,transcription} persists all values and transcription_status auto-switches to 'done' when transcription is non-empty; whitespace-only transcription does NOT flip status (stays 'none'). C) GET /api/recipes?favorites=true returns only is_favorite=true docs; unfiltered GET still returns the recipe; after PUT is_favorite=false the recipe is excluded from favorites filter. D) Partial PUT with only {tags:['dolce']} leaves difficulty/prep_time/cook_time/is_favorite/transcription/transcription_status unchanged. E) DELETE removes the recipe (subsequent GET -> 404). F) All pre-existing endpoints still pass: GET /api/ ('Il Ricettario - API'), Folders CRUD with cascade delete (subfolders + recipes removed), Subfolders CRUD, Recipes basic CRUD, /recipes/count, /recipes/random?count=3, POST /api/extract on invalid URL returns success:false, POST /api/recipes on unsupported URL returns 400, /auth/me returns DEFAULT_LOCAL_USER fallback, /auth/logout returns {'message':'Logout effettuato'}, /instagram/session GET returns {connected:false,...} and DELETE returns {success:true,connected:false}. No regressions detected."
 
   - task: "Database Integration"
     implemented: true
@@ -210,7 +213,7 @@ metadata:
 
 test_plan:
   current_focus:
-    - "All backend API endpoints tested and working"
+    - "Recipe editor + tags/difficulty/times + favorites (NEW FEATURES) regression"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -224,6 +227,11 @@ agent_communication:
     message: "Feature: Instagram Session Integration added (2026-04-17). Allows users to connect their IG account via in-app WebView → cookies captured → encrypted (Fernet) → stored per-user → used with yt-dlp for real caption/thumbnail extraction. Added legal disclaimer modal, 20 req/h rate limit, disconnect option. Backend endpoints: POST/GET/DELETE /api/instagram/session. Frontend: /app/instagram-login.tsx with WebView + disclaimer. Drawer shows 'Connect Instagram' / 'Instagram connected @username' with toggle. Also REMOVED Foodish fake image fallback: if real extraction fails, thumbnail stays empty (user can upload manually). Translations added in IT/EN. Other languages fall back to Italian for IG strings (acceptable for now)."
   - agent: "main"
     message: "REFACTORING COMPLETE (2026-04-17). Split monolithic server.py (1101 lines) into modular structure: server.py (37 lines entry) + config.py + db.py + models.py + services/{video,scraping,ai,instagram}.py + routes/{auth,extract,folders,subfolders,recipes,videos,instagram}.py. No behavior changes, all endpoints preserved at same URLs with same request/response schemas. Backend restarted cleanly, smoke checks (GET /api/, GET /api/recipes, POST /api/extract) all pass. Also fixed EAS build assets: created missing splash-icon.png and resized favicon.png to square 512x512. Please run full backend regression to confirm the refactor didn't break anything."
+  - agent: "main"
+    message: "FEATURE ADD (2026-04-17): recipe editor + tags/difficulty/prep_time/cook_time + favorites. Backend: Recipe model extended with new fields (tags List[str], difficulty str, prep_time int, cook_time int, is_favorite bool) and PUT /api/recipes/{id} now accepts all these + transcription. GET /api/recipes added `favorites=true` query filter. When user edits transcription manually, transcription_status is set to 'done'. Frontend: recipe detail has star toggle in header, chips for difficulty/times, tag pills, extended edit modal with AI text area + tag builder + difficulty segmented + time inputs. New screen /(drawer)/favorites.tsx and drawer menu entry. Home cards show a small star badge when favorite. Quick manual curl verification passed: POST /api/recipes creates with defaults, PUT sets all new fields including is_favorite=true, GET /api/recipes?favorites=true filters correctly. Please do a regression covering: (a) existing endpoints still pass; (b) new fields persist correctly; (c) favorites filter; (d) transcription edit auto-sets status to done."
   - agent: "testing"
     message: "POST-REFACTOR REGRESSION COMPLETE (2026-04-17). Ran 29 backend tests against http://localhost:8001/api covering every endpoint listed in the review request. 29/29 PASSED (100%). Verified: (1) GET /api/ returns {'message':'Il Ricettario - API'}. (2) Folders CRUD: POST/GET-list/GET-by-id/PUT/DELETE all OK, 404 on unknown id. (3) Subfolders CRUD with folder_id query filter, 404 on unknown id. (4) Recipes CRUD: POST with instagram reel URL creates recipe with platform='instagram', manual_caption preserved; GET list, /count {count:N}, /random?count=3, GET/PUT/DELETE by id all OK. Unsupported URL returns 400 on POST /api/recipes and success=false on POST /api/extract. (5) Auth: /auth/me returns DEFAULT_LOCAL_USER fallback {user_id:'local_user',...} when no token; /auth/logout returns {'message':'Logout effettuato'}. (6) Instagram: GET /api/instagram/session returns {connected:false,username:'',connected_at:''}; DELETE returns {success:true,connected:false}. (7) Cascade delete confirmed: deleting a folder also removes its subfolders and recipes. No regressions vs pre-refactor behavior - endpoint paths, request schemas, and response shapes all identical."
 
+
+  - agent: "testing"
+    message: "RECIPE NEW FEATURES + FULL REGRESSION (2026-04-17): ran 41 backend tests at http://localhost:8001/api, 41/41 PASSED. NEW: (A) POST /api/recipes returns defaults tags=[], difficulty='', prep_time=0, cook_time=0, is_favorite=false plus transcription='' and transcription_status='none'. (B) PUT with {tags,difficulty,prep_time,cook_time,is_favorite,transcription} persists every field and sets transcription_status='done' automatically; whitespace-only transcription correctly does NOT flip the status. (C) GET /api/recipes?favorites=true returns only is_favorite=true records; the recipe is still visible in unfiltered GET; after PUT is_favorite=false the favorites filter no longer lists it. (D) Partial PUT with only {tags:['dolce']} leaves difficulty/prep_time/cook_time/is_favorite/transcription/transcription_status untouched. (E) DELETE removes the recipe (subsequent GET -> 404). REGRESSION: GET /api/ returns 'Il Ricettario - API'; Folders/Subfolders/Recipes CRUD, /recipes/count, /recipes/random?count=3, cascade delete (folder -> subfolders+recipes), POST /api/extract (invalid URL -> success:false), POST /api/recipes (unsupported URL -> 400), /auth/me DEFAULT_LOCAL_USER fallback, /auth/logout, /instagram/session GET & DELETE — all unchanged. No regressions."

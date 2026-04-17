@@ -16,7 +16,11 @@ interface Recipe {
   id: string; name: string; source_url: string; platform: string;
   caption: string; thumbnail_url: string; notes: string;
   transcription: string; transcription_status: string; created_at: string;
+  tags?: string[]; difficulty?: string; prep_time?: number; cook_time?: number;
+  is_favorite?: boolean;
 }
+
+type Difficulty = 'easy' | 'medium' | 'hard' | '';
 
 export default function RecipeDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -29,9 +33,17 @@ export default function RecipeDetailScreen() {
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [uploadingThumb, setUploadingThumb] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+
+  // Edit state (extended)
   const [editName, setEditName] = useState('');
   const [editCaption, setEditCaption] = useState('');
   const [editNotes, setEditNotes] = useState('');
+  const [editTranscription, setEditTranscription] = useState('');
+  const [editTags, setEditTags] = useState<string[]>([]);
+  const [newTagInput, setNewTagInput] = useState('');
+  const [editDifficulty, setEditDifficulty] = useState<Difficulty>('');
+  const [editPrep, setEditPrep] = useState('');
+  const [editCook, setEditCook] = useState('');
   const [saving, setSaving] = useState(false);
   const [pollingTimer, setPollingTimer] = useState<ReturnType<typeof setInterval> | null>(null);
 
@@ -69,6 +81,20 @@ export default function RecipeDetailScreen() {
     } catch (e) { setTranscribing(false); }
   };
 
+  const toggleFavorite = async () => {
+    if (!recipe) return;
+    const newVal = !recipe.is_favorite;
+    // Optimistic update
+    setRecipe({ ...recipe, is_favorite: newVal });
+    try {
+      await authFetch(`/api/recipes/${recipe.id}`, {
+        method: 'PUT', body: JSON.stringify({ is_favorite: newVal }),
+      });
+    } catch (e) {
+      setRecipe({ ...recipe, is_favorite: !newVal });
+    }
+  };
+
   const downloadVideo = async () => {
     if (!recipe) return;
     setDownloading(true);
@@ -78,12 +104,10 @@ export default function RecipeDetailScreen() {
       const data = await res.json();
 
       if (data.success && data.video_url) {
-        // Direct download available!
         if (Platform.OS === 'web') {
           window.open(data.video_url, '_blank');
-          Alert.alert(T('download_started'), 'Il video si sta scaricando nel browser');
+          Alert.alert(T('download_started'), T('download_started'));
         } else {
-          // Download to device
           const fileUri = FileSystem.documentDirectory + `${recipe.name.replace(/[^a-zA-Z0-9]/g, '_')}.mp4`;
           const callback = (dp: FileSystem.DownloadProgressData) => {
             const progress = dp.totalBytesWritten / dp.totalBytesExpectedToWrite;
@@ -96,12 +120,11 @@ export default function RecipeDetailScreen() {
             if (await Sharing.isAvailableAsync()) {
               await Sharing.shareAsync(result.uri, { mimeType: 'video/mp4', dialogTitle: T('downloaded') });
             } else {
-              Alert.alert(T('downloaded'), 'Video salvato con successo');
+              Alert.alert(T('downloaded'), T('downloaded'));
             }
           }
         }
       } else if (data.fallback_links && data.fallback_links.length > 0) {
-        // Fallback: open external service
         Alert.alert(
           T('download_alt'),
           T('use_external'),
@@ -161,16 +184,44 @@ export default function RecipeDetailScreen() {
 
   const openEditModal = () => {
     if (!recipe) return;
-    setEditName(recipe.name); setEditCaption(recipe.caption); setEditNotes(recipe.notes);
+    setEditName(recipe.name);
+    setEditCaption(recipe.caption);
+    setEditNotes(recipe.notes);
+    setEditTranscription(recipe.transcription || '');
+    setEditTags(recipe.tags || []);
+    setNewTagInput('');
+    setEditDifficulty((recipe.difficulty as Difficulty) || '');
+    setEditPrep(recipe.prep_time ? String(recipe.prep_time) : '');
+    setEditCook(recipe.cook_time ? String(recipe.cook_time) : '');
     setShowEditModal(true);
   };
+
+  const addTag = () => {
+    const tag = newTagInput.trim();
+    if (!tag) return;
+    if (editTags.includes(tag)) { setNewTagInput(''); return; }
+    setEditTags([...editTags, tag]);
+    setNewTagInput('');
+  };
+
+  const removeTag = (tag: string) => setEditTags(editTags.filter(t => t !== tag));
 
   const saveEdit = async () => {
     if (!recipe || !editName.trim()) return;
     setSaving(true);
     try {
+      const body: any = {
+        name: editName.trim(),
+        caption: editCaption.trim(),
+        notes: editNotes.trim(),
+        transcription: editTranscription.trim(),
+        tags: editTags,
+        difficulty: editDifficulty,
+        prep_time: parseInt(editPrep, 10) || 0,
+        cook_time: parseInt(editCook, 10) || 0,
+      };
       const res = await authFetch(`/api/recipes/${recipe.id}`, {
-        method: 'PUT', body: JSON.stringify({ name: editName.trim(), caption: editCaption.trim(), notes: editNotes.trim() }),
+        method: 'PUT', body: JSON.stringify(body),
       });
       if (res.ok) { setRecipe(await res.json()); setShowEditModal(false); }
     } catch (e) { /* */ }
@@ -190,6 +241,10 @@ export default function RecipeDetailScreen() {
     return <SafeAreaView style={s.container}><View style={s.center}><ActivityIndicator size="large" color="#FF6B35" /></View></SafeAreaView>;
   }
 
+  const difficultyColor = (d?: string) => d === 'easy' ? '#4CAF50' : d === 'medium' ? '#FFC107' : d === 'hard' ? '#FF4444' : '#777';
+  const difficultyLabel = (d?: string) => d === 'easy' ? T('easy') : d === 'medium' ? T('medium') : d === 'hard' ? T('hard') : '';
+  const hasMeta = !!recipe.difficulty || (recipe.prep_time ?? 0) > 0 || (recipe.cook_time ?? 0) > 0;
+
   return (
     <SafeAreaView style={s.container}>
       <View style={s.header}>
@@ -197,6 +252,9 @@ export default function RecipeDetailScreen() {
           <Ionicons name="arrow-back" size={26} color="#fff" />
         </TouchableOpacity>
         <Text style={s.hTitle} numberOfLines={1}>{recipe.name}</Text>
+        <TouchableOpacity style={s.hBtn} onPress={toggleFavorite} testID="fav-btn">
+          <Ionicons name={recipe.is_favorite ? 'star' : 'star-outline'} size={22} color={recipe.is_favorite ? '#FFD700' : '#aaa'} />
+        </TouchableOpacity>
         <TouchableOpacity style={s.hBtn} onPress={openEditModal} testID="edit-btn">
           <Ionicons name="pencil" size={20} color="#FF6B35" />
         </TouchableOpacity>
@@ -226,6 +284,39 @@ export default function RecipeDetailScreen() {
           <Text style={s.metaDate}>{new Date(recipe.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}</Text>
         </View>
         <Text style={s.name}>{recipe.name}</Text>
+
+        {/* Difficulty + Time row */}
+        {hasMeta ? (
+          <View style={s.metaRow}>
+            {recipe.difficulty ? (
+              <View style={[s.chip, { borderColor: difficultyColor(recipe.difficulty) }]}>
+                <Ionicons name="flame" size={14} color={difficultyColor(recipe.difficulty)} />
+                <Text style={[s.chipText, { color: difficultyColor(recipe.difficulty) }]}>{difficultyLabel(recipe.difficulty)}</Text>
+              </View>
+            ) : null}
+            {(recipe.prep_time ?? 0) > 0 ? (
+              <View style={s.chip}>
+                <Ionicons name="time-outline" size={14} color="#aaa" />
+                <Text style={s.chipText}>{T('prep_time')}: {recipe.prep_time} {T('minutes_short')}</Text>
+              </View>
+            ) : null}
+            {(recipe.cook_time ?? 0) > 0 ? (
+              <View style={s.chip}>
+                <Ionicons name="flame-outline" size={14} color="#aaa" />
+                <Text style={s.chipText}>{T('cook_time')}: {recipe.cook_time} {T('minutes_short')}</Text>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
+        {/* Tags */}
+        {recipe.tags && recipe.tags.length > 0 ? (
+          <View style={s.tagRow}>
+            {recipe.tags.map((t) => (
+              <View key={t} style={s.tag}><Text style={s.tagText}>#{t}</Text></View>
+            ))}
+          </View>
+        ) : null}
 
         {/* Actions */}
         <View style={s.actions}>
@@ -283,15 +374,67 @@ export default function RecipeDetailScreen() {
         <View style={s.mOverlay}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={s.mKAV}>
             <View style={s.mContent}>
-              <View style={s.mHead}><Text style={s.mTitle}>{T('edit')}</Text>
-                <TouchableOpacity onPress={() => setShowEditModal(false)}><Ionicons name="close" size={26} color="#fff" /></TouchableOpacity></View>
+              <View style={s.mHead}>
+                <Text style={s.mTitle}>{T('edit_recipe')}</Text>
+                <TouchableOpacity onPress={() => setShowEditModal(false)}><Ionicons name="close" size={26} color="#fff" /></TouchableOpacity>
+              </View>
               <ScrollView keyboardShouldPersistTaps="handled">
                 <Text style={s.mLabel}>{T('edit_name')}</Text>
                 <TextInput style={s.mInput} value={editName} onChangeText={setEditName} />
+
                 <Text style={s.mLabel}>{T('description')}</Text>
                 <TextInput style={[s.mInput, s.mArea]} value={editCaption} onChangeText={setEditCaption} multiline textAlignVertical="top" />
+
                 <Text style={s.mLabel}>{T('personal_notes')}</Text>
                 <TextInput style={[s.mInput, s.mArea]} value={editNotes} onChangeText={setEditNotes} multiline textAlignVertical="top" />
+
+                {/* Difficulty */}
+                <Text style={s.mLabel}>{T('difficulty')}</Text>
+                <View style={s.diffRow}>
+                  {(['easy', 'medium', 'hard'] as Difficulty[]).map((d) => (
+                    <TouchableOpacity key={d} style={[s.diffChip, editDifficulty === d && { borderColor: difficultyColor(d), backgroundColor: difficultyColor(d) + '22' }]} onPress={() => setEditDifficulty(editDifficulty === d ? '' : d)}>
+                      <Text style={[s.diffText, editDifficulty === d && { color: difficultyColor(d), fontWeight: '700' }]}>{difficultyLabel(d)}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* Time row */}
+                <View style={s.timeRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.mLabel}>{T('prep_time')} ({T('minutes_short')})</Text>
+                    <TextInput style={s.mInput} value={editPrep} onChangeText={setEditPrep} keyboardType="number-pad" placeholder="0" placeholderTextColor="#666" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.mLabel}>{T('cook_time')} ({T('minutes_short')})</Text>
+                    <TextInput style={s.mInput} value={editCook} onChangeText={setEditCook} keyboardType="number-pad" placeholder="0" placeholderTextColor="#666" />
+                  </View>
+                </View>
+
+                {/* Tags */}
+                <Text style={s.mLabel}>{T('tags')}</Text>
+                <View style={s.tagEditRow}>
+                  <TextInput style={[s.mInput, { flex: 1 }]} value={newTagInput} onChangeText={setNewTagInput}
+                    placeholder={T('add_tag')} placeholderTextColor="#666" onSubmitEditing={addTag} returnKeyType="done" />
+                  <TouchableOpacity style={s.addTagBtn} onPress={addTag}>
+                    <Ionicons name="add" size={22} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+                {editTags.length > 0 ? (
+                  <View style={s.tagRow}>
+                    {editTags.map((t) => (
+                      <TouchableOpacity key={t} style={s.tagEdit} onPress={() => removeTag(t)}>
+                        <Text style={s.tagText}>#{t}</Text>
+                        <Ionicons name="close" size={14} color="#FF6B35" />
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                ) : null}
+
+                {/* AI Recipe text */}
+                <Text style={s.mLabel}>{T('ai_recipe_text')}</Text>
+                <TextInput style={[s.mInput, s.mAreaBig]} value={editTranscription} onChangeText={setEditTranscription}
+                  multiline textAlignVertical="top" placeholder={T('ai_recipe_text_placeholder')} placeholderTextColor="#666" />
+
                 <TouchableOpacity style={[s.mSave, saving && s.disabled]} onPress={saveEdit} disabled={saving}>
                   {saving ? <ActivityIndicator color="#fff" /> : <><Ionicons name="checkmark" size={22} color="#fff" /><Text style={s.mSaveText}>{T('save')}</Text></>}
                 </TouchableOpacity>
@@ -307,8 +450,8 @@ export default function RecipeDetailScreen() {
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0f0f0f' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#222' },
-  hBtn: { padding: 8 }, hTitle: { flex: 1, fontSize: 17, fontWeight: '600', color: '#fff', marginHorizontal: 8 },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#222' },
+  hBtn: { padding: 8 }, hTitle: { flex: 1, fontSize: 17, fontWeight: '600', color: '#fff', marginHorizontal: 4 },
   scroll: { flex: 1 }, scrollContent: { paddingBottom: 40 },
   coverImg: { width: '100%', height: 220, backgroundColor: '#1a1a1a' },
   coverBadge: { position: 'absolute', bottom: 12, right: 12, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 16, paddingVertical: 6, paddingHorizontal: 12, gap: 4 },
@@ -317,7 +460,13 @@ const s = StyleSheet.create({
   noCoverText: { color: '#FF6B35', fontSize: 15, fontWeight: '600', marginTop: 8 },
   meta: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, paddingTop: 14 },
   metaText: { fontSize: 14, color: '#888' }, metaDate: { fontSize: 12, color: '#666', marginLeft: 'auto' },
-  name: { fontSize: 24, fontWeight: 'bold', color: '#fff', paddingHorizontal: 20, marginTop: 6, marginBottom: 14 },
+  name: { fontSize: 24, fontWeight: 'bold', color: '#fff', paddingHorizontal: 20, marginTop: 6, marginBottom: 10 },
+  metaRow: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 20, gap: 8, marginBottom: 10 },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 5, paddingHorizontal: 10, borderRadius: 14, borderWidth: 1, borderColor: '#333', backgroundColor: '#1a1a1a' },
+  chipText: { fontSize: 12, color: '#aaa', fontWeight: '600' },
+  tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: 20, marginBottom: 10 },
+  tag: { backgroundColor: '#FF6B3520', borderRadius: 12, paddingVertical: 4, paddingHorizontal: 10 },
+  tagText: { color: '#FF6B35', fontSize: 12, fontWeight: '600' },
   actions: { flexDirection: 'row', paddingHorizontal: 20, gap: 8, marginBottom: 14 },
   actBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 10, paddingVertical: 12, gap: 6 },
   actText: { color: '#fff', fontSize: 13, fontWeight: '600' },
@@ -336,12 +485,20 @@ const s = StyleSheet.create({
   aiBtnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
   mOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' },
   mKAV: { flex: 1, justifyContent: 'flex-end' },
-  mContent: { backgroundColor: '#1a1a1a', borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '85%', padding: 20 },
+  mContent: { backgroundColor: '#1a1a1a', borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '90%', padding: 20 },
   mHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   mTitle: { fontSize: 22, fontWeight: 'bold', color: '#fff' },
   mLabel: { fontSize: 13, fontWeight: '600', color: '#aaa', marginBottom: 6, marginTop: 12 },
   mInput: { backgroundColor: '#252525', borderRadius: 12, padding: 14, fontSize: 15, color: '#fff', borderWidth: 1, borderColor: '#333' },
   mArea: { minHeight: 80, paddingTop: 12 },
+  mAreaBig: { minHeight: 180, paddingTop: 12 },
+  diffRow: { flexDirection: 'row', gap: 8 },
+  diffChip: { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center', borderWidth: 1, borderColor: '#333', backgroundColor: '#252525' },
+  diffText: { color: '#ccc', fontSize: 14 },
+  timeRow: { flexDirection: 'row', gap: 10 },
+  tagEditRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  addTagBtn: { backgroundColor: '#FF6B35', borderRadius: 10, width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
+  tagEdit: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FF6B3520', borderRadius: 12, paddingVertical: 4, paddingHorizontal: 10 },
   mSave: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#28a745', borderRadius: 12, padding: 16, marginTop: 20, marginBottom: 20, gap: 8 },
   mSaveText: { color: '#fff', fontSize: 16, fontWeight: '600' },
 });
