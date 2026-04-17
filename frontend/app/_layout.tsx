@@ -125,6 +125,7 @@ function AppRoot() {
         <Stack.Screen name="(drawer)" options={{ headerShown: false }} />
         <Stack.Screen name="recipe/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="folder/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="instagram-login" options={{ presentation: 'modal', headerShown: false }} />
       </Stack>
     </>
   );

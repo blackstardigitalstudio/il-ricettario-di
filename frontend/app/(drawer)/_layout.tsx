@@ -17,10 +17,30 @@ function CustomDrawerContent(props: any) {
   const [showEditName, setShowEditName] = useState(false);
   const [showLangPicker, setShowLangPicker] = useState(false);
   const [newName, setNewName] = useState('');
+  const [igConnected, setIgConnected] = useState(false);
+  const [igUsername, setIgUsername] = useState('');
 
   useEffect(() => {
     loadUser();
+    loadIgStatus();
   }, []);
+
+  const loadIgStatus = async () => {
+    try {
+      const res = await authFetch('/api/instagram/session');
+      if (res.ok) {
+        const data = await res.json();
+        setIgConnected(!!data.connected);
+        setIgUsername(data.username || '');
+      }
+    } catch (e) { /* ignore */ }
+  };
+
+  // Re-check IG status when drawer opens
+  useEffect(() => {
+    const unsub = props.navigation?.addListener?.('drawerOpen', loadIgStatus);
+    return () => { if (unsub) unsub(); };
+  }, [props.navigation]);
 
   const loadUser = async () => {
     try {
@@ -82,6 +102,27 @@ function CustomDrawerContent(props: any) {
     ]);
   };
 
+  const handleIgToggle = () => {
+    if (igConnected) {
+      Alert.alert(T('ig_disconnect'), T('ig_disconnect_confirm'), [
+        { text: T('cancel'), style: 'cancel' },
+        {
+          text: T('ig_disconnect'), style: 'destructive',
+          onPress: async () => {
+            try {
+              await authFetch('/api/instagram/session', { method: 'DELETE' });
+              setIgConnected(false);
+              setIgUsername('');
+            } catch (e) { /* ignore */ }
+          },
+        },
+      ]);
+    } else {
+      props.navigation.closeDrawer();
+      setTimeout(() => router.push('/instagram-login'), 150);
+    }
+  };
+
   const currentLang = LANGUAGES.find(l => l.code === lang) || LANGUAGES[0];
 
   const menuItems = [
@@ -135,6 +176,22 @@ function CustomDrawerContent(props: any) {
       ))}
 
       <View style={ds.sep} />
+
+      {/* Instagram Connection */}
+      <TouchableOpacity style={ds.menuItem} onPress={handleIgToggle} testID="drawer-instagram">
+        <View style={[ds.iconCircle, { backgroundColor: '#E4405F20' }]}>
+          <Ionicons name="logo-instagram" size={22} color="#E4405F" />
+        </View>
+        <Text style={ds.menuLabel}>{igConnected ? T('ig_connected') : T('ig_connect')}</Text>
+        {igConnected ? (
+          <View style={[ds.langInline, { backgroundColor: '#28A74520' }]}>
+            <Ionicons name="checkmark-circle" size={14} color="#28A745" />
+            {igUsername ? <Text style={[ds.langInlineName, { color: '#28A745' }]}>@{igUsername}</Text> : null}
+          </View>
+        ) : (
+          <Ionicons name="chevron-forward" size={18} color="#666" />
+        )}
+      </TouchableOpacity>
 
       {/* Language Selector */}
       <TouchableOpacity style={ds.menuItem} onPress={() => setShowLangPicker(true)} testID="drawer-language">

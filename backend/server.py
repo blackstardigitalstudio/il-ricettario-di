@@ -16,6 +16,7 @@ from concurrent.futures import ThreadPoolExecutor
 import subprocess
 import tempfile
 import httpx
+from cryptography.fernet import Fernet
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -33,6 +34,58 @@ logger = logging.getLogger(__name__)
 
 VIDEO_DIR = ROOT_DIR / "videos"
 VIDEO_DIR.mkdir(exist_ok=True)
+
+# ================= INSTAGRAM SESSION (encrypted cookies) =================
+
+IG_COOKIE_KEY = os.getenv("IG_COOKIE_KEY", "").encode() if os.getenv("IG_COOKIE_KEY") else None
+IG_CIPHER = Fernet(IG_COOKIE_KEY) if IG_COOKIE_KEY else None
+IG_COOKIE_DIR = ROOT_DIR / "ig_cookies"
+IG_COOKIE_DIR.mkdir(exist_ok=True)
+
+# Rate limit tracking (in-memory, per-user)
+IG_EXTRACTION_COUNT = {}  # user_id -> (count, reset_at_timestamp)
+IG_RATE_LIMIT_PER_HOUR = 20
+
+
+def _check_rate_limit(user_id: str) -> bool:
+    """Check if user has exceeded IG extraction rate limit. Returns True if OK."""
+    now = datetime.now(timezone.utc).timestamp()
+    record = IG_EXTRACTION_COUNT.get(user_id)
+    if not record or record[1] < now:
+        IG_EXTRACTION_COUNT[user_id] = (1, now + 3600)
+        return True
+    count, reset_at = record
+    if count >= IG_RATE_LIMIT_PER_HOUR:
+        return False
+    IG_EXTRACTION_COUNT[user_id] = (count + 1, reset_at)
+    return True
+
+
+async def _get_user_ig_cookies(user_id: str) -> Optional[dict]:
+    """Return user's IG cookies dict if session valid, else None."""
+    if not IG_CIPHER:
+        return None
+    session = await db.instagram_sessions.find_one({"user_id": user_id}, {"_id": 0})
+    if not session:
+        return None
+    try:
+        encrypted = session.get("encrypted_cookies", "").encode()
+        decrypted = IG_CIPHER.decrypt(encrypted).decode()
+        import json
+        return json.loads(decrypted)
+    except Exception as e:
+        logger.error(f"Cookie decrypt error for {user_id}: {e}")
+        return None
+
+
+def _write_cookies_netscape(cookies: dict, path: str):
+    """Write cookies in Netscape format for yt-dlp"""
+    with open(path, 'w') as f:
+        f.write("# Netscape HTTP Cookie File\n")
+        for name, value in cookies.items():
+            # domain, flag, path, secure, expiry, name, value
+            f.write(f".instagram.com\tTRUE\t/\tTRUE\t2147483647\t{name}\t{value}\n")
+
 
 # ================= AUTH HELPERS =================
 
@@ -405,7 +458,7 @@ async def create_recipe(recipe: RecipeCreate, request: Request):
     await db.recipes.insert_one(recipe_obj.dict())
     
     # Background: auto-generate AI title + cover image
-    asyncio.create_task(auto_generate_title_and_cover(recipe_obj.id, name, caption, url))
+    asyncio.create_task(auto_generate_title_and_cover(recipe_obj.id, name, caption, url, user["user_id"]))
     
     total = await db.recipes.count_documents({"user_id": user["user_id"]})
     if total > 0 and total % 3 == 0:
@@ -520,14 +573,16 @@ async def do_ai_recipe_generation(recipe_id: str, recipe: dict):
 
 # ================= AUTO TITLE + COVER IMAGE =================
 
-def _ytdlp_info(url: str) -> dict:
-    """Blocking yt-dlp info extractor"""
+def _ytdlp_info(url: str, cookiefile: Optional[str] = None) -> dict:
+    """Blocking yt-dlp info extractor. Optionally uses user cookies."""
     opts = {
         'quiet': True,
         'no_warnings': True,
         'skip_download': True,
         'format': 'best',
     }
+    if cookiefile:
+        opts['cookiefile'] = cookiefile
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
             return ydl.extract_info(url, download=False) or {}
@@ -536,31 +591,46 @@ def _ytdlp_info(url: str) -> dict:
         return {}
 
 
-async def extract_real_media(source_url: str) -> dict:
+async def extract_real_media(source_url: str, user_id: str = "local_user") -> dict:
     """Try multiple methods to extract REAL caption + thumbnail from video (no invented content)"""
     result = {"caption": "", "thumbnail_bytes": None, "thumbnail_mime": "image/jpeg"}
     import re
     import html as html_lib
 
-    # Method 1: yt-dlp (best when not rate-limited)
+    # Prepare user cookies if available (for Instagram auth)
+    cookiefile = None
+    ig_cookies = None
+    if 'instagram' in source_url.lower():
+        ig_cookies = await _get_user_ig_cookies(user_id)
+        if ig_cookies:
+            cookiefile = str(IG_COOKIE_DIR / f"{user_id}.txt")
+            try:
+                _write_cookies_netscape(ig_cookies, cookiefile)
+                logger.info(f"Using user IG cookies for {user_id}")
+            except Exception as e:
+                logger.error(f"Cookie write error: {e}")
+                cookiefile = None
+
+    # Method 1: yt-dlp (best when not rate-limited, or with cookies)
     try:
         loop = asyncio.get_event_loop()
-        info = await loop.run_in_executor(executor, _ytdlp_info, source_url)
+        info = await loop.run_in_executor(executor, _ytdlp_info, source_url, cookiefile)
         if info:
             desc = info.get('description') or info.get('title') or ''
             if desc and not result['caption']:
                 result['caption'] = desc.strip()
             thumb_url = info.get('thumbnail') or ''
             if not thumb_url and info.get('thumbnails'):
-                # take highest resolution
                 thumbs = info.get('thumbnails') or []
                 if thumbs:
                     thumb_url = thumbs[-1].get('url', '')
             if thumb_url:
                 try:
-                    async with httpx.AsyncClient() as http:
-                        r = await http.get(thumb_url, timeout=15, follow_redirects=True,
-                                           headers={'User-Agent': 'Mozilla/5.0'})
+                    headers = {'User-Agent': 'Mozilla/5.0'}
+                    # Use IG cookies for thumbnail CDN too (some require auth)
+                    cookies_dict = ig_cookies if ig_cookies else None
+                    async with httpx.AsyncClient(cookies=cookies_dict) as http:
+                        r = await http.get(thumb_url, timeout=15, follow_redirects=True, headers=headers)
                         if r.status_code == 200 and 'image' in r.headers.get('content-type', ''):
                             result['thumbnail_bytes'] = r.content
                             result['thumbnail_mime'] = r.headers.get('content-type', 'image/jpeg').split(';')[0]
@@ -569,10 +639,12 @@ async def extract_real_media(source_url: str) -> dict:
     except Exception as e:
         logger.warning(f"yt-dlp method error: {e}")
 
-    # Method 2: Scrape public page OG tags (works for most public IG/FB posts, no login needed)
+    # Method 2: Scrape public page OG tags (fallback)
     if not result['caption'] or not result['thumbnail_bytes']:
         try:
-            async with httpx.AsyncClient() as http:
+            # Use user cookies if available (logged-in view may work)
+            cookies_dict = ig_cookies if ig_cookies else None
+            async with httpx.AsyncClient(cookies=cookies_dict) as http:
                 page = await http.get(source_url, timeout=15, follow_redirects=True,
                     headers={
                         'User-Agent': 'Mozilla/5.0 (compatible; facebookexternalhit/1.1; +http://www.facebook.com/externalhit_uatext.php)',
@@ -581,13 +653,11 @@ async def extract_real_media(source_url: str) -> dict:
                     })
                 if page.status_code == 200:
                     html = page.text
-                    # og:description or description meta
                     m_desc = re.search(r'<meta\s+property=["\']og:description["\']\s+content=["\']([^"\']+)', html)
                     if not m_desc:
                         m_desc = re.search(r'<meta\s+name=["\']description["\']\s+content=["\']([^"\']+)', html)
                     if m_desc and not result['caption']:
                         result['caption'] = html_lib.unescape(m_desc.group(1)).strip()
-                    # og:image
                     m_img = re.search(r'<meta\s+property=["\']og:image["\']\s+content=["\']([^"\']+)', html)
                     if m_img and not result['thumbnail_bytes']:
                         img_url = html_lib.unescape(m_img.group(1))
@@ -602,7 +672,7 @@ async def extract_real_media(source_url: str) -> dict:
         except Exception as e:
             logger.warning(f"OG scrape error: {e}")
 
-    # Method 3: DownloadGram API (fallback specific for Instagram)
+    # Method 3: DownloadGram API (Instagram-specific fallback, no auth)
     if 'instagram' in source_url.lower() and (not result['caption'] or not result['thumbnail_bytes']):
         try:
             async with httpx.AsyncClient(timeout=25) as http:
@@ -632,14 +702,27 @@ async def extract_real_media(source_url: str) -> dict:
         except Exception as e:
             logger.warning(f"DownloadGram media error: {e}")
 
+    # Cleanup cookie file
+    if cookiefile and os.path.exists(cookiefile):
+        try:
+            os.unlink(cookiefile)
+        except Exception:
+            pass
+
     return result
 
 
-async def auto_generate_title_and_cover(recipe_id: str, current_name: str, caption: str, source_url: str):
+async def auto_generate_title_and_cover(recipe_id: str, current_name: str, caption: str, source_url: str, user_id: str = "local_user"):
     """Background task: extract REAL caption + REAL thumbnail from video, then generate AI title."""
     try:
-        # STEP 1: Extract REAL caption + thumbnail from the video
-        media = await extract_real_media(source_url)
+        # Rate limit check for Instagram
+        if 'instagram' in source_url.lower() and not _check_rate_limit(user_id):
+            logger.warning(f"Rate limit exceeded for user {user_id}")
+            await db.recipes.update_one({"id": recipe_id}, {"$set": {"name": current_name or "Nuova Ricetta"}})
+            return
+
+        # STEP 1: Extract REAL caption + thumbnail from the video (uses user's IG cookies if set)
+        media = await extract_real_media(source_url, user_id=user_id)
         real_caption = (media.get('caption') or '').strip()
         thumb_bytes = media.get('thumbnail_bytes')
         thumb_mime = media.get('thumbnail_mime', 'image/jpeg')
@@ -880,6 +963,61 @@ async def compress_old_videos(user_id: str):
                 await db.recipes.update_one({"id": recipe['id']}, {"$set": {"video_compressed": True}})
     except Exception as e:
         logger.error(f"Compression error: {e}")
+
+# ================= INSTAGRAM SESSION ENDPOINTS =================
+
+class IgSessionIn(BaseModel):
+    cookies: dict  # {name: value} e.g. {"sessionid": "...", "ds_user_id": "...", "csrftoken": "..."}
+    username: Optional[str] = None
+
+
+@api_router.post("/instagram/session")
+async def save_ig_session(request: Request, body: IgSessionIn):
+    """Save encrypted Instagram session cookies for the current user."""
+    if not IG_CIPHER:
+        raise HTTPException(status_code=500, detail="Cifratura non configurata (IG_COOKIE_KEY mancante)")
+    user = await get_current_user(request)
+    if not body.cookies or 'sessionid' not in body.cookies:
+        raise HTTPException(status_code=400, detail="Cookie 'sessionid' mancante. Accedi a Instagram correttamente.")
+    import json
+    try:
+        encrypted = IG_CIPHER.encrypt(json.dumps(body.cookies).encode()).decode()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Errore cifratura: {e}")
+    await db.instagram_sessions.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": {
+            "user_id": user["user_id"],
+            "encrypted_cookies": encrypted,
+            "username": body.username or "",
+            "connected_at": datetime.now(timezone.utc).isoformat(),
+        }},
+        upsert=True
+    )
+    logger.info(f"IG session saved for user {user['user_id']} (username: {body.username or 'n/a'})")
+    return {"success": True, "connected": True, "username": body.username or ""}
+
+
+@api_router.get("/instagram/session")
+async def get_ig_session(request: Request):
+    """Check if user has an Instagram session connected."""
+    user = await get_current_user(request)
+    session = await db.instagram_sessions.find_one({"user_id": user["user_id"]}, {"_id": 0, "encrypted_cookies": 0})
+    return {
+        "connected": bool(session),
+        "username": session.get("username", "") if session else "",
+        "connected_at": session.get("connected_at", "") if session else "",
+    }
+
+
+@api_router.delete("/instagram/session")
+async def delete_ig_session(request: Request):
+    """Disconnect Instagram: remove the saved session."""
+    user = await get_current_user(request)
+    result = await db.instagram_sessions.delete_one({"user_id": user["user_id"]})
+    logger.info(f"IG session deleted for user {user['user_id']} (matched: {result.deleted_count})")
+    return {"success": True, "connected": False}
+
 
 # Include router
 app.include_router(api_router)
