@@ -89,6 +89,7 @@ function CustomDrawerContent(props: any) {
     { key: 'add', icon: 'add-circle', label: T('add_recipe'), color: '#28a745' },
     { key: 'folders', icon: 'folder', label: T('folders'), color: '#6C3DC1' },
     { key: 'favorites', icon: 'star', label: T('favorites'), color: '#FFD700' },
+    { key: 'settings', icon: 'settings', label: T('settings'), color: '#888' },
   ];
 
   return (
@@ -145,20 +146,6 @@ function CustomDrawerContent(props: any) {
           <Text style={ds.langInlineFlag}>{currentLang.flag}</Text>
           <Text style={ds.langInlineName}>{currentLang.name}</Text>
         </View>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={ds.menuItem} onPress={() => { setNewName(userName); setShowEditName(true); }} testID="drawer-edit-name">
-        <View style={[ds.iconCircle, { backgroundColor: '#FF6B3520' }]}>
-          <Ionicons name="pencil" size={22} color="#FF6B35" />
-        </View>
-        <Text style={ds.menuLabel}>{T('edit_name')}</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={ds.menuItem} onPress={handleLogout} testID="drawer-logout">
-        <View style={[ds.iconCircle, { backgroundColor: '#FF444420' }]}>
-          <Ionicons name="log-out" size={22} color="#FF4444" />
-        </View>
-        <Text style={[ds.menuLabel, { color: '#FF4444' }]}>{T('logout')}</Text>
       </TouchableOpacity>
 
       {/* Edit Name Modal */}
@@ -259,6 +246,7 @@ export default function DrawerLayout() {
       <Drawer.Screen name="add" options={{ title: 'Add' }} />
       <Drawer.Screen name="folders" options={{ title: 'Folders' }} />
       <Drawer.Screen name="favorites" options={{ title: 'Favorites' }} />
+      <Drawer.Screen name="settings" options={{ title: 'Settings' }} />
     </Drawer>
   );
 }

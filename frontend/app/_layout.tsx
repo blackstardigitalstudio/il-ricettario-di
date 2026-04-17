@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { LangProvider, useLang, LANGUAGES } from '../src/context/LangContext';
+import { ThemeProvider } from '../src/context/ThemeContext';
 
 function WelcomeScreen({ onComplete }: { onComplete: (name: string) => void }) {
   const { T, lang, setLang } = useLang();
@@ -125,6 +126,8 @@ function AppRoot() {
         <Stack.Screen name="(drawer)" options={{ headerShown: false }} />
         <Stack.Screen name="recipe/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="folder/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="google-login" options={{ headerShown: false, presentation: 'modal' }} />
+        <Stack.Screen name="web-downloader" options={{ headerShown: false, presentation: 'modal' }} />
       </Stack>
     </>
   );
@@ -134,7 +137,9 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <LangProvider>
-        <AppRoot />
+        <ThemeProvider>
+          <AppRoot />
+        </ThemeProvider>
       </LangProvider>
     </GestureHandlerRootView>
   );

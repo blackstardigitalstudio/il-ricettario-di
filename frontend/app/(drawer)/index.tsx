@@ -342,6 +342,16 @@ export default function HomeScreen() {
           ))
         )}
       </ScrollView>
+
+      {/* Settings FAB bottom-left */}
+      <TouchableOpacity
+        style={st.fabSettings}
+        onPress={() => router.push('/(drawer)/settings')}
+        testID="fab-settings"
+        activeOpacity={0.8}
+      >
+        <Ionicons name="settings" size={26} color="#fff" />
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -392,6 +402,24 @@ const st = StyleSheet.create({
   },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 16, paddingBottom: 24 },
+  fabSettings: {
+    position: 'absolute',
+    left: 20,
+    bottom: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#333',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.35,
+    shadowRadius: 5,
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: '#444',
+  },
   randomSection: { marginBottom: 20 },
   randomHeader: {
     flexDirection: 'row',
