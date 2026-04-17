@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert,
-  Switch, Platform, ActivityIndicator, Image,
+  Switch, Platform, ActivityIndicator, Image, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,13 +9,13 @@ import { useRouter, useNavigation } from 'expo-router';
 import { DrawerActions } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authFetch } from '../../src/utils/api';
-import { useLang } from '../../src/context/LangContext';
+import { useLang, LANGUAGES } from '../../src/context/LangContext';
 import { useTheme } from '../../src/context/ThemeContext';
 
 export default function SettingsScreen() {
   const router = useRouter();
   const navigation = useNavigation();
-  const { T } = useLang();
+  const { T, lang, setLang } = useLang();
   const { mode, colors, toggle } = useTheme();
 
   const [userName, setUserName] = useState('');
@@ -24,6 +24,9 @@ export default function SettingsScreen() {
   const [editingName, setEditingName] = useState(false);
   const [tempName, setTempName] = useState('');
   const [loggingOut, setLoggingOut] = useState(false);
+  const [showLangPicker, setShowLangPicker] = useState(false);
+
+  const currentLang = LANGUAGES.find((l) => l.code === lang) || LANGUAGES[0];
 
   useEffect(() => { loadUser(); }, []);
 
@@ -202,6 +205,17 @@ export default function SettingsScreen() {
               testID="theme-switch"
             />
           </View>
+          <View style={s.divider} />
+          <TouchableOpacity style={s.row} onPress={() => setShowLangPicker(true)} testID="language-picker-btn">
+            <View style={[s.rowIcon, { backgroundColor: '#1877F220' }]}>
+              <Ionicons name="language" size={20} color="#1877F2" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.rowLabel}>{T('language')}</Text>
+              <Text style={s.rowSub}>{currentLang.flag}  {currentLang.name}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.textSubtle} />
+          </TouchableOpacity>
         </View>
 
         {/* ABOUT */}
@@ -218,6 +232,33 @@ export default function SettingsScreen() {
           </View>
         </View>
       </ScrollView>
+
+      {/* Language Picker Modal */}
+      <Modal visible={showLangPicker} transparent animationType="fade" onRequestClose={() => setShowLangPicker(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setShowLangPicker(false)} />
+          <View style={{ backgroundColor: colors.card, borderRadius: 18, width: '100%', maxHeight: '70%', padding: 16, borderWidth: 1, borderColor: colors.cardBorder }}>
+            <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 12, textAlign: 'center' }}>{T('language')}</Text>
+            <ScrollView>
+              {LANGUAGES.map((l) => {
+                const active = lang === l.code;
+                return (
+                  <TouchableOpacity
+                    key={l.code}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 12, borderRadius: 10, backgroundColor: active ? colors.accentSoft : 'transparent', marginBottom: 4 }}
+                    onPress={() => { setLang(l.code); setShowLangPicker(false); }}
+                    testID={`lang-${l.code}`}
+                  >
+                    <Text style={{ fontSize: 22 }}>{l.flag}</Text>
+                    <Text style={{ flex: 1, color: active ? colors.accent : colors.text, fontSize: 15, fontWeight: active ? '700' : '500' }}>{l.name}</Text>
+                    {active ? <Ionicons name="checkmark-circle" size={22} color={colors.accent} /> : null}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }

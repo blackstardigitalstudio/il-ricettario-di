@@ -163,14 +163,43 @@ export default function RecipeDetailScreen() {
     if (!recipe) return;
     setDownloading(true);
     setDownloadProgress(0);
+
+    // Helper: always show the in-app alert that lets the user open the browser downloader
+    const openBrowserFallback = () => {
+      const src = recipe.source_url;
+      const browserUrl = recipe.platform === 'facebook'
+        ? `https://snapsave.app/en?url=${encodeURIComponent(src)}`
+        : `https://snapinst.to/en?url=${encodeURIComponent(src)}`;
+      Alert.alert(
+        T('download_alt'),
+        T('use_external'),
+        [
+          { text: T('open_in_browser'), onPress: () => Linking.openURL(browserUrl) },
+          { text: T('try_web_downloader'), onPress: () => router.push({ pathname: '/web-downloader', params: { url: src, platform: recipe.platform } }) },
+          { text: T('cancel'), style: 'cancel' as const },
+        ],
+      );
+    };
+
+    let data: any = null;
     try {
-      const res = await authFetch(`/api/recipes/${recipe.id}/download-video`, { method: 'POST' });
-      const data = await res.json();
+      // 30s max on the server-side attempt — if it takes longer we skip to browser
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 30000);
+      const res = await authFetch(`/api/recipes/${recipe.id}/download-video`, {
+        method: 'POST',
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      data = await res.json().catch(() => null);
+    } catch (e) {
+      // Network error / abort: fall through to browser fallback
+      data = null;
+    }
 
-      if (data.success && data.video_url) {
-        // Build full URL if it's an internal path
+    if (data && data.success && data.video_url) {
+      try {
         const fullUrl = data.video_url.startsWith('http') ? data.video_url : `${BACKEND_URL}${data.video_url}`;
-
         if (Platform.OS === 'web') {
           window.open(fullUrl, '_blank');
           Alert.alert(T('download_started'), T('download_started'));
@@ -191,28 +220,15 @@ export default function RecipeDetailScreen() {
             }
           }
         }
-      } else {
-        // Server-side download failed. Instagram/Facebook often block datacenter IPs,
-        // so we redirect the user to a browser downloader where their phone's IP works.
-        const src = recipe.source_url;
-        const browserUrl = recipe.platform === 'facebook'
-          ? `https://snapsave.app/en?url=${encodeURIComponent(src)}`
-          : `https://snapinst.to/en?url=${encodeURIComponent(src)}`;
-        Alert.alert(
-          T('download_alt'),
-          T('use_external'),
-          [
-            { text: T('open_in_browser'), onPress: () => Linking.openURL(browserUrl) },
-            { text: T('try_web_downloader'), onPress: () => router.push({ pathname: '/web-downloader', params: { url: src, platform: recipe.platform } }) },
-            { text: T('cancel'), style: 'cancel' as const },
-          ],
-        );
+      } catch (e) {
+        openBrowserFallback();
       }
-    } catch (e) {
-      console.log('Download error:', e);
-      Alert.alert(T('error'), T('connection_error'));
+    } else {
+      // Server said "no" OR we had a network error — always offer the browser route
+      openBrowserFallback();
     }
-    finally { setDownloading(false); setDownloadProgress(0); }
+    setDownloading(false);
+    setDownloadProgress(0);
   };
 
   const shareOnWhatsApp = async () => {

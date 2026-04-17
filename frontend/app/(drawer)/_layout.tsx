@@ -136,18 +136,6 @@ function CustomDrawerContent(props: any) {
         </TouchableOpacity>
       ))}
 
-      {/* Language Selector */}
-      <TouchableOpacity style={ds.menuItem} onPress={() => setShowLangPicker(true)} testID="drawer-language">
-        <View style={[ds.iconCircle, { backgroundColor: '#1877F220' }]}>
-          <Ionicons name="language" size={22} color="#1877F2" />
-        </View>
-        <Text style={ds.menuLabel}>{T('language')}</Text>
-        <View style={ds.langInline}>
-          <Text style={ds.langInlineFlag}>{currentLang.flag}</Text>
-          <Text style={ds.langInlineName}>{currentLang.name}</Text>
-        </View>
-      </TouchableOpacity>
-
       {/* Edit Name Modal */}
       <Modal visible={showEditName} transparent animationType="fade" onRequestClose={() => setShowEditName(false)}>
         <View style={ds.modalOverlay}>
