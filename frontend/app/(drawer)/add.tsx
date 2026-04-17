@@ -1,4 +1,5 @@
 import { authFetch } from '../../src/utils/api';
+import { useLang } from '../../src/context/LangContext';
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView,
@@ -16,6 +17,7 @@ interface Subfolder { id: string; folder_id: string; name: string; }
 export default function AddRecipeScreen() {
   const router = useRouter();
   const navigation = useNavigation();
+  const { T } = useLang();
   const [url, setUrl] = useState('');
   const [manualCaption, setManualCaption] = useState('');
   const [notes, setNotes] = useState('');
@@ -52,8 +54,8 @@ export default function AddRecipeScreen() {
 
   const saveRecipe = async () => {
     const trimmed = url.trim();
-    if (!trimmed) { Alert.alert('Inserisci un link', 'Incolla il link del video da Instagram o Facebook'); return; }
-    if (!isValidUrl(trimmed)) { Alert.alert('Link non valido', 'Inserisci un link di Instagram o Facebook'); return; }
+    if (!trimmed) { Alert.alert(T('insert_link'), T('paste_video_link')); return; }
+    if (!isValidUrl(trimmed)) { Alert.alert(T('invalid_link'), T('insert_ig_fb_link')); return; }
 
     setSaving(true);
     try {
@@ -70,8 +72,8 @@ export default function AddRecipeScreen() {
       });
       if (res.ok) {
         Alert.alert(
-          '✅ Ricetta salvata!',
-          'Il titolo e la copertina verranno generati automaticamente dall\'AI.',
+          `✅ ${T('recipe_saved')}`,
+          T('ai_will_generate'),
           [{ text: 'OK', onPress: () => {
             setUrl(''); setManualCaption(''); setNotes('');
             setSelectedFolder(null); setSelectedSubfolder(null);
@@ -80,17 +82,17 @@ export default function AddRecipeScreen() {
         );
       } else {
         const err = await res.json();
-        Alert.alert('Errore', err.detail || 'Errore durante il salvataggio');
+        Alert.alert(T('error'), err.detail || T('connection_error'));
       }
     } catch (e) {
-      Alert.alert('Errore', 'Errore di connessione');
+      Alert.alert(T('error'), T('connection_error'));
     } finally {
       setSaving(false);
     }
   };
 
-  const getFolderName = () => folders.find(f => f.id === selectedFolder)?.name || 'Nessuna cartella';
-  const getSubfolderName = () => subfolders.find(s => s.id === selectedSubfolder)?.name || 'Nessuna sottocartella';
+  const getFolderName = () => folders.find(f => f.id === selectedFolder)?.name || T('no_folder');
+  const getSubfolderName = () => subfolders.find(s => s.id === selectedSubfolder)?.name || T('no_subfolder');
 
   return (
     <SafeAreaView style={st.container}>
@@ -102,14 +104,14 @@ export default function AddRecipeScreen() {
               <Ionicons name="menu" size={28} color="#FF6B35" />
             </TouchableOpacity>
             <View>
-              <Text style={st.title}>Aggiungi Ricetta</Text>
-              <Text style={st.subtitle}>Incolla il link e salva - l'AI fa il resto!</Text>
+              <Text style={st.title}>{T('add_recipe')}</Text>
+              <Text style={st.subtitle}>{T('paste_link')}</Text>
             </View>
           </View>
 
           {/* URL Input */}
           <View style={st.section}>
-            <Text style={st.label}>Link Video *</Text>
+            <Text style={st.label}>{T('video_link')} *</Text>
             <View style={st.urlRow}>
               <TextInput
                 style={st.urlInput}
@@ -129,16 +131,16 @@ export default function AddRecipeScreen() {
             {/* Info box */}
             <View style={st.infoBox}>
               <Ionicons name="sparkles" size={16} color="#FFD700" />
-              <Text style={st.infoText}>L'AI genererà automaticamente il titolo e la copertina della ricetta</Text>
+              <Text style={st.infoText}>{T('ai_auto_generate')}</Text>
             </View>
           </View>
 
           {/* Optional: Caption */}
           <View style={st.section}>
-            <Text style={st.label}>Descrizione (opzionale)</Text>
+            <Text style={st.label}>{T('description_optional')}</Text>
             <TextInput
               style={[st.textInput, st.textArea]}
-              placeholder="Se vuoi, aggiungi la descrizione..."
+              placeholder={T('add_description')}
               placeholderTextColor="#555"
               value={manualCaption}
               onChangeText={setManualCaption}
@@ -150,10 +152,10 @@ export default function AddRecipeScreen() {
 
           {/* Optional: Notes */}
           <View style={st.section}>
-            <Text style={st.label}>Note personali (opzionale)</Text>
+            <Text style={st.label}>{T('personal_notes_optional')}</Text>
             <TextInput
               style={[st.textInput, st.textArea]}
-              placeholder="Le tue annotazioni..."
+              placeholder={T('your_notes')}
               placeholderTextColor="#555"
               value={notes}
               onChangeText={setNotes}
@@ -165,7 +167,7 @@ export default function AddRecipeScreen() {
 
           {/* Folder Picker */}
           <View style={st.section}>
-            <Text style={st.label}>Cartella (opzionale)</Text>
+            <Text style={st.label}>{T('folder_optional')}</Text>
             <TouchableOpacity style={st.pickerBtn} onPress={() => setShowFolderPicker(!showFolderPicker)} testID="folder-picker">
               <Ionicons name="folder" size={18} color="#FF6B35" />
               <Text style={st.pickerText}>{getFolderName()}</Text>
@@ -174,7 +176,7 @@ export default function AddRecipeScreen() {
             {showFolderPicker && (
               <View style={st.pickerList}>
                 <TouchableOpacity style={st.pickerItem} onPress={() => { setSelectedFolder(null); setShowFolderPicker(false); }}>
-                  <Text style={st.pickerItemText}>Nessuna cartella</Text>
+                  <Text style={st.pickerItemText}>{T('no_folder')}</Text>
                 </TouchableOpacity>
                 {folders.map(f => (
                   <TouchableOpacity key={f.id} style={[st.pickerItem, selectedFolder === f.id && st.pickerActive]}
@@ -187,7 +189,7 @@ export default function AddRecipeScreen() {
 
             {selectedFolder && subfolders.length > 0 && (
               <>
-                <Text style={[st.label, { marginTop: 14 }]}>Sottocartella</Text>
+                <Text style={[st.label, { marginTop: 14 }]}>{T('subfolder')}</Text>
                 <TouchableOpacity style={st.pickerBtn} onPress={() => setShowSubfolderPicker(!showSubfolderPicker)}>
                   <Ionicons name="folder-open" size={18} color="#FF6B35" />
                   <Text style={st.pickerText}>{getSubfolderName()}</Text>
@@ -196,7 +198,7 @@ export default function AddRecipeScreen() {
                 {showSubfolderPicker && (
                   <View style={st.pickerList}>
                     <TouchableOpacity style={st.pickerItem} onPress={() => { setSelectedSubfolder(null); setShowSubfolderPicker(false); }}>
-                      <Text style={st.pickerItemText}>Nessuna</Text>
+                      <Text style={st.pickerItemText}>{T('no_subfolder')}</Text>
                     </TouchableOpacity>
                     {subfolders.map(sf => (
                       <TouchableOpacity key={sf.id} style={[st.pickerItem, selectedSubfolder === sf.id && st.pickerActive]}
@@ -219,9 +221,9 @@ export default function AddRecipeScreen() {
               testID="save-recipe-btn"
             >
               {saving ? (
-                <><ActivityIndicator color="#fff" /><Text style={st.saveBtnText}>Salvataggio in corso...</Text></>
+                <><ActivityIndicator color="#fff" /><Text style={st.saveBtnText}>{T('saving')}</Text></>
               ) : (
-                <><Ionicons name="checkmark-circle" size={22} color="#fff" /><Text style={st.saveBtnText}>Salva Ricetta</Text></>
+                <><Ionicons name="checkmark-circle" size={22} color="#fff" /><Text style={st.saveBtnText}>{T('save_recipe')}</Text></>
               )}
             </TouchableOpacity>
           </View>

@@ -1,4 +1,5 @@
 import { authFetch } from '../../src/utils/api';
+import { useLang } from '../../src/context/LangContext';
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator,
@@ -20,6 +21,7 @@ interface Recipe {
 export default function RecipeDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const { T } = useLang();
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [loading, setLoading] = useState(true);
   const [transcribing, setTranscribing] = useState(false);
@@ -79,7 +81,7 @@ export default function RecipeDetailScreen() {
         // Direct download available!
         if (Platform.OS === 'web') {
           window.open(data.video_url, '_blank');
-          Alert.alert('Download avviato', 'Il video si sta scaricando nel browser');
+          Alert.alert(T('download_started'), 'Il video si sta scaricando nel browser');
         } else {
           // Download to device
           const fileUri = FileSystem.documentDirectory + `${recipe.name.replace(/[^a-zA-Z0-9]/g, '_')}.mp4`;
@@ -92,42 +94,41 @@ export default function RecipeDetailScreen() {
           if (result && result.uri) {
             setDownloadProgress(100);
             if (await Sharing.isAvailableAsync()) {
-              await Sharing.shareAsync(result.uri, { mimeType: 'video/mp4', dialogTitle: 'Salva video' });
+              await Sharing.shareAsync(result.uri, { mimeType: 'video/mp4', dialogTitle: T('downloaded') });
             } else {
-              Alert.alert('Scaricato!', 'Video salvato con successo');
+              Alert.alert(T('downloaded'), 'Video salvato con successo');
             }
           }
         }
       } else if (data.fallback_links && data.fallback_links.length > 0) {
         // Fallback: open external service
         Alert.alert(
-          'Download alternativo',
-          'Usa un servizio esterno per scaricare il video',
+          T('download_alt'),
+          T('use_external'),
           data.fallback_links.map((l: any) => ({
             text: l.name, onPress: () => Linking.openURL(l.url)
-          })).concat([{ text: 'Annulla', style: 'cancel' as const }])
+          })).concat([{ text: T('cancel'), style: 'cancel' as const }])
         );
       } else {
         Linking.openURL(recipe.source_url);
       }
     } catch (e) {
       console.log('Download error:', e);
-      Alert.alert('Errore', 'Errore durante il download');
+      Alert.alert(T('error'), T('connection_error'));
     }
     finally { setDownloading(false); setDownloadProgress(0); }
   };
 
   const shareOnWhatsApp = async () => {
     if (!recipe) return;
-    const appName = 'Il Ricettario';
     let message = `🍽️ *${recipe.name}*\n\n`;
     if (recipe.caption) message += `📝 ${recipe.caption}\n\n`;
     if (recipe.transcription && recipe.transcription_status === 'done') {
       message += `${recipe.transcription}\n\n`;
     }
     message += `📱 Video: ${recipe.source_url}\n\n`;
-    message += `✨ Scopri ${appName}! Salva e organizza le tue ricette preferite da Instagram e Facebook.\n`;
-    message += `👉 Scarica l'app: https://play.google.com/store/apps/details?id=app.emergent.foodorganizer241c92aba2`;
+    message += `✨ ${T('discover_app')}\n`;
+    message += `👉 ${T('download_app')}: https://play.google.com/store/apps/details?id=app.emergent.foodorganizer241c92aba2`;
 
     try {
       if (Platform.OS === 'web') {
@@ -177,9 +178,9 @@ export default function RecipeDetailScreen() {
   };
 
   const deleteRecipe = () => {
-    Alert.alert('Elimina', 'Sei sicuro?', [
-      { text: 'Annulla', style: 'cancel' },
-      { text: 'Elimina', style: 'destructive', onPress: async () => {
+    Alert.alert(T('delete'), T('are_you_sure'), [
+      { text: T('cancel'), style: 'cancel' },
+      { text: T('delete'), style: 'destructive', onPress: async () => {
         await authFetch(`/api/recipes/${id}`, { method: 'DELETE' }); router.back();
       }},
     ]);
@@ -209,10 +210,10 @@ export default function RecipeDetailScreen() {
         <TouchableOpacity onPress={pickCoverImage} activeOpacity={0.8}>
           {recipe.thumbnail_url ? (
             <View><Image source={{ uri: recipe.thumbnail_url }} style={s.coverImg} resizeMode="cover" />
-              <View style={s.coverBadge}><Ionicons name="camera" size={14} color="#fff" /><Text style={s.coverBadgeText}>Cambia</Text></View></View>
+              <View style={s.coverBadge}><Ionicons name="camera" size={14} color="#fff" /><Text style={s.coverBadgeText}>{T('change_cover')}</Text></View></View>
           ) : (
             <View style={s.noCover}>{uploadingThumb ? <ActivityIndicator size="large" color="#FF6B35" /> : (
-              <><Ionicons name="image" size={48} color="#FF6B35" /><Text style={s.noCoverText}>Aggiungi copertina</Text></>
+              <><Ionicons name="image" size={48} color="#FF6B35" /><Text style={s.noCoverText}>{T('add_cover')}</Text></>
             )}</View>
           )}
         </TouchableOpacity>
@@ -222,7 +223,7 @@ export default function RecipeDetailScreen() {
           <Ionicons name={recipe.platform === 'instagram' ? 'logo-instagram' : 'logo-facebook'} size={18}
             color={recipe.platform === 'instagram' ? '#E4405F' : '#1877F2'} />
           <Text style={s.metaText}>{recipe.platform === 'instagram' ? 'Instagram' : 'Facebook'}</Text>
-          <Text style={s.metaDate}>{new Date(recipe.created_at).toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' })}</Text>
+          <Text style={s.metaDate}>{new Date(recipe.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}</Text>
         </View>
         <Text style={s.name}>{recipe.name}</Text>
 
@@ -231,47 +232,47 @@ export default function RecipeDetailScreen() {
           <TouchableOpacity style={[s.actBtn, { backgroundColor: '#4CAF50' }, downloading && s.disabled]}
             onPress={downloadVideo} disabled={downloading} testID="download-btn">
             {downloading ? (
-              <><ActivityIndicator size="small" color="#fff" /><Text style={s.actText}>{downloadProgress > 0 ? `${downloadProgress}%` : 'Scaricando...'}</Text></>
+              <><ActivityIndicator size="small" color="#fff" /><Text style={s.actText}>{downloadProgress > 0 ? `${downloadProgress}%` : T('downloading')}</Text></>
             ) : (
-              <><Ionicons name="download" size={18} color="#fff" /><Text style={s.actText}>Scarica</Text></>
+              <><Ionicons name="download" size={18} color="#fff" /><Text style={s.actText}>{T('download')}</Text></>
             )}
           </TouchableOpacity>
           <TouchableOpacity style={[s.actBtn, { backgroundColor: '#25D366' }]} onPress={shareOnWhatsApp} testID="share-wa-btn">
             <Ionicons name="logo-whatsapp" size={18} color="#fff" />
-            <Text style={s.actText}>Condividi</Text>
+            <Text style={s.actText}>{T('share')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[s.actBtn, { backgroundColor: '#FF6B35' }]} onPress={() => Linking.openURL(recipe.source_url)} testID="open-btn">
             <Ionicons name="play-circle" size={18} color="#fff" />
-            <Text style={s.actText}>Guarda</Text>
+            <Text style={s.actText}>{T('watch')}</Text>
           </TouchableOpacity>
         </View>
 
         {/* Caption */}
         {recipe.caption ? (
           <View style={s.card}>
-            <View style={s.cardH}><Ionicons name="document-text-outline" size={16} color="#FF6B35" /><Text style={s.cardT}>Descrizione</Text></View>
+            <View style={s.cardH}><Ionicons name="document-text-outline" size={16} color="#FF6B35" /><Text style={s.cardT}>{T('description')}</Text></View>
             <Text style={s.cardBody}>{recipe.caption}</Text>
           </View>
         ) : null}
 
         {/* Notes */}
         <View style={s.card}>
-          <View style={s.cardH}><Ionicons name="create-outline" size={16} color="#FF6B35" /><Text style={s.cardT}>Note</Text></View>
-          {recipe.notes ? <Text style={s.cardBody}>{recipe.notes}</Text> : <Text style={s.empty}>Tocca ✏️ per aggiungere</Text>}
+          <View style={s.cardH}><Ionicons name="create-outline" size={16} color="#FF6B35" /><Text style={s.cardT}>{T('personal_notes')}</Text></View>
+          {recipe.notes ? <Text style={s.cardBody}>{recipe.notes}</Text> : <Text style={s.empty}>{T('tap_pencil_to_add')}</Text>}
         </View>
 
         {/* AI */}
         <View style={s.card}>
-          <View style={s.cardH}><Ionicons name="sparkles" size={16} color="#FFD700" /><Text style={s.cardT}>Ricetta AI</Text></View>
+          <View style={s.cardH}><Ionicons name="sparkles" size={16} color="#FFD700" /><Text style={s.cardT}>{T('ai_recipe')}</Text></View>
           {recipe.transcription_status === 'done' ? <Text style={s.cardBody}>{recipe.transcription}</Text>
           : recipe.transcription_status === 'pending' || transcribing ? (
-            <View style={s.row}><ActivityIndicator size="small" color="#FF6B35" /><Text style={s.rowText}>Generazione...</Text></View>
+            <View style={s.row}><ActivityIndicator size="small" color="#FF6B35" /><Text style={s.rowText}>{T('generating')}</Text></View>
           ) : recipe.transcription_status === 'error' ? (
             <View><Text style={s.err}>{recipe.transcription}</Text>
-            <TouchableOpacity style={s.retryBtn} onPress={generateRecipeAI}><Text style={s.retryText}>Riprova</Text></TouchableOpacity></View>
+            <TouchableOpacity style={s.retryBtn} onPress={generateRecipeAI}><Text style={s.retryText}>{T('retry')}</Text></TouchableOpacity></View>
           ) : (
             <TouchableOpacity style={s.aiBtn} onPress={generateRecipeAI} testID="ai-btn">
-              <Ionicons name="sparkles" size={18} color="#fff" /><Text style={s.aiBtnText}>Genera Ricetta con AI</Text>
+              <Ionicons name="sparkles" size={18} color="#fff" /><Text style={s.aiBtnText}>{T('generate_ai_recipe')}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -282,17 +283,17 @@ export default function RecipeDetailScreen() {
         <View style={s.mOverlay}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={s.mKAV}>
             <View style={s.mContent}>
-              <View style={s.mHead}><Text style={s.mTitle}>Modifica</Text>
+              <View style={s.mHead}><Text style={s.mTitle}>{T('edit')}</Text>
                 <TouchableOpacity onPress={() => setShowEditModal(false)}><Ionicons name="close" size={26} color="#fff" /></TouchableOpacity></View>
               <ScrollView keyboardShouldPersistTaps="handled">
-                <Text style={s.mLabel}>Nome</Text>
+                <Text style={s.mLabel}>{T('edit_name')}</Text>
                 <TextInput style={s.mInput} value={editName} onChangeText={setEditName} />
-                <Text style={s.mLabel}>Descrizione</Text>
+                <Text style={s.mLabel}>{T('description')}</Text>
                 <TextInput style={[s.mInput, s.mArea]} value={editCaption} onChangeText={setEditCaption} multiline textAlignVertical="top" />
-                <Text style={s.mLabel}>Note</Text>
+                <Text style={s.mLabel}>{T('personal_notes')}</Text>
                 <TextInput style={[s.mInput, s.mArea]} value={editNotes} onChangeText={setEditNotes} multiline textAlignVertical="top" />
                 <TouchableOpacity style={[s.mSave, saving && s.disabled]} onPress={saveEdit} disabled={saving}>
-                  {saving ? <ActivityIndicator color="#fff" /> : <><Ionicons name="checkmark" size={22} color="#fff" /><Text style={s.mSaveText}>Salva</Text></>}
+                  {saving ? <ActivityIndicator color="#fff" /> : <><Ionicons name="checkmark" size={22} color="#fff" /><Text style={s.mSaveText}>{T('save')}</Text></>}
                 </TouchableOpacity>
               </ScrollView>
             </View>

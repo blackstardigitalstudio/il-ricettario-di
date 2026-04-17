@@ -10,6 +10,7 @@ import { DrawerActions } from '@react-navigation/native';
 import { useNavigation } from 'expo-router';
 import { authFetch } from '../../src/utils/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useLang } from '../../src/context/LangContext';
 
 
 
@@ -27,6 +28,7 @@ interface Recipe {
 export default function HomeScreen() {
   const router = useRouter();
   const navigation = useNavigation();
+  const { T } = useLang();
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [randomRecipes, setRandomRecipes] = useState<Recipe[]>([]);
   const [loading, setLoading] = useState(true);
@@ -110,10 +112,10 @@ export default function HomeScreen() {
   };
 
   const deleteRecipe = (id: string) => {
-    Alert.alert('Elimina Ricetta', 'Sei sicuro?', [
-      { text: 'Annulla', style: 'cancel' },
+    Alert.alert(T('delete_recipe'), T('are_you_sure'), [
+      { text: T('cancel'), style: 'cancel' },
       {
-        text: 'Elimina',
+        text: T('delete'),
         style: 'destructive',
         onPress: async () => {
           try {
@@ -166,10 +168,10 @@ export default function HomeScreen() {
         </TouchableOpacity>
         <View style={st.headerText}>
           <Text style={st.title} testID="home-title">
-            Il Ricettario di {userName}
+            {T('cookbook_of')} {userName}
           </Text>
           <Text style={st.subtitle}>
-            {recipes.length} ricette salvate
+            {recipes.length} {T('recipes_saved')}
           </Text>
         </View>
       </View>
@@ -180,7 +182,7 @@ export default function HomeScreen() {
           <Ionicons name="search" size={18} color="#888" />
           <TextInput
             style={st.searchInput}
-            placeholder="Cerca ricette..."
+            placeholder={T('search_recipes')}
             placeholderTextColor="#666"
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -219,7 +221,7 @@ export default function HomeScreen() {
           <View style={st.randomSection}>
             <View style={st.randomHeader}>
               <Ionicons name="sparkles" size={22} color="#FFD700" />
-              <Text style={st.randomTitle}>Cosa cuciniamo oggi?</Text>
+              <Text style={st.randomTitle}>{T('what_cook_today')}</Text>
             </View>
             <ScrollView
               horizontal
@@ -265,19 +267,19 @@ export default function HomeScreen() {
 
         {/* All Recipes */}
         <Text style={st.sectionLabel}>
-          {searchQuery ? 'Risultati' : 'Tutte le ricette'}
+          {searchQuery ? T('results') : T('all_recipes')}
         </Text>
 
         {recipes.length === 0 ? (
           <View style={st.emptyContainer}>
             <Ionicons name="restaurant-outline" size={60} color="#444" />
             <Text style={st.emptyText}>
-              {searchQuery ? 'Nessun risultato' : 'Nessuna ricetta'}
+              {searchQuery ? T('no_results') : T('no_recipes')}
             </Text>
             <Text style={st.emptySubtext}>
               {searchQuery
-                ? 'Prova un altro termine'
-                : 'Aggiungi la tua prima ricetta!'}
+                ? T('try_other_term')
+                : T('add_first_recipe')}
             </Text>
           </View>
         ) : (
@@ -312,7 +314,7 @@ export default function HomeScreen() {
                   </Text>
                 </View>
                 <Text style={st.recipeCaption} numberOfLines={2}>
-                  {recipe.caption || 'Nessuna descrizione'}
+                  {recipe.caption || T('no_description')}
                 </Text>
                 <View style={st.recipeFooter}>
                   <Text style={st.recipeDate}>

@@ -218,3 +218,5 @@ test_plan:
 agent_communication:
   - agent: "testing"
     message: "Comprehensive backend testing completed successfully. All 10 API endpoints tested with 100% pass rate. Recipe Manager API is fully functional with proper CRUD operations for folders, subfolders, and recipes. Video extraction service working with proper error handling for authentication issues. Database integration working correctly with MongoDB. Ready for production use."
+  - agent: "main"
+    message: "i18n fully wired (2026-04-17). Root LangProvider wraps app, Welcome screen has top-right language picker (10 languages: IT/EN/ES/FR/DE/PT/JA/AR/ZH/RU), Drawer menu shows current language inline + has Language option. All main screens (Home, Add Recipe, Folders, Recipe Detail, Welcome) use t() translation helper. Language choice saved in AsyncStorage. Home crash fixed by clearing Metro cache. Backend remained unchanged - no retest needed."

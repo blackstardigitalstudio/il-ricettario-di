@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useNavigation, DrawerActions } from '@react-navigation/native';
+import { useLang } from '../../src/context/LangContext';
 
 
 
@@ -34,6 +35,7 @@ interface Subfolder {
 export default function FoldersScreen() {
   const router = useRouter();
   const navigation = useNavigation();
+  const { T } = useLang();
   const [folders, setFolders] = useState<Folder[]>([]);
   const [subfolders, setSubfolders] = useState<{ [key: string]: Subfolder[] }>({});
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
@@ -95,7 +97,7 @@ export default function FoldersScreen() {
 
   const createFolder = async () => {
     if (!newFolderName.trim()) {
-      Alert.alert('Errore', 'Inserisci un nome');
+      Alert.alert(T('error'), T('folder_name'));
       return;
     }
     setSaving(true);
@@ -142,12 +144,12 @@ export default function FoldersScreen() {
 
   const deleteFolder = (folder: Folder) => {
     Alert.alert(
-      'Elimina Cartella',
-      `Eliminare "${folder.name}" e tutte le sue ricette?`,
+      T('delete_folder'),
+      T('delete_folder_confirm'),
       [
-        { text: 'Annulla', style: 'cancel' },
+        { text: T('cancel'), style: 'cancel' },
         {
-          text: 'Elimina',
+          text: T('delete'),
           style: 'destructive',
           onPress: async () => {
             try {
@@ -211,12 +213,12 @@ export default function FoldersScreen() {
 
   const deleteSubfolder = (subfolder: Subfolder) => {
     Alert.alert(
-      'Elimina Sottocartella',
-      `Eliminare "${subfolder.name}" e tutte le sue ricette?`,
+      T('delete_subfolder'),
+      T('delete_subfolder_confirm'),
       [
-        { text: 'Annulla', style: 'cancel' },
+        { text: T('cancel'), style: 'cancel' },
         {
-          text: 'Elimina',
+          text: T('delete'),
           style: 'destructive',
           onPress: async () => {
             try {
@@ -266,7 +268,7 @@ export default function FoldersScreen() {
         <TouchableOpacity style={styles.menuBtn} onPress={() => navigation.dispatch(DrawerActions.openDrawer())} testID="menu-btn-folders">
           <Ionicons name="menu" size={28} color="#FF6B35" />
         </TouchableOpacity>
-        <Text style={styles.title}>Cartelle</Text>
+        <Text style={styles.title}>{T('folders')}</Text>
         <TouchableOpacity
           style={styles.addButton}
           onPress={() => {
@@ -289,8 +291,8 @@ export default function FoldersScreen() {
         {folders.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Ionicons name="folder-open-outline" size={80} color="#444" />
-            <Text style={styles.emptyText}>Nessuna cartella</Text>
-            <Text style={styles.emptySubtext}>Crea la tua prima cartella per organizzare le ricette</Text>
+            <Text style={styles.emptyText}>{T('no_folders')}</Text>
+            <Text style={styles.emptySubtext}>{T('create_first_folder')}</Text>
           </View>
         ) : (
           folders.map((folder) => (
@@ -337,7 +339,7 @@ export default function FoldersScreen() {
               {expandedFolders.has(folder.id) && (
                 <View style={styles.subfolderList}>
                   {subfolders[folder.id]?.length === 0 ? (
-                    <Text style={styles.noSubfolders}>Nessuna sottocartella</Text>
+                    <Text style={styles.noSubfolders}>{T('no_subfolders')}</Text>
                   ) : (
                     subfolders[folder.id]?.map((subfolder) => (
                       <TouchableOpacity
@@ -369,7 +371,7 @@ export default function FoldersScreen() {
                     onPress={() => router.push(`/folder/${folder.id}`)}
                   >
                     <Ionicons name="eye" size={18} color="#FF6B35" />
-                    <Text style={styles.viewAllText}>Vedi tutte le ricette</Text>
+                    <Text style={styles.viewAllText}>{T('view_all_recipes')}</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -383,11 +385,11 @@ export default function FoldersScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
-              {editingFolder ? 'Modifica Cartella' : 'Nuova Cartella'}
+              {editingFolder ? T('edit_folder') : T('new_folder')}
             </Text>
             <TextInput
               style={styles.modalInput}
-              placeholder="Nome cartella"
+              placeholder={T('folder_name')}
               placeholderTextColor="#666"
               value={newFolderName}
               onChangeText={setNewFolderName}
@@ -402,7 +404,7 @@ export default function FoldersScreen() {
                   setNewFolderName('');
                 }}
               >
-                <Text style={styles.modalCancelText}>Annulla</Text>
+                <Text style={styles.modalCancelText}>{T('cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalSaveButton, saving && styles.buttonDisabled]}
@@ -412,7 +414,7 @@ export default function FoldersScreen() {
                 {saving ? (
                   <ActivityIndicator color="#fff" size="small" />
                 ) : (
-                  <Text style={styles.modalSaveText}>Salva</Text>
+                  <Text style={styles.modalSaveText}>{T('save')}</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -425,11 +427,11 @@ export default function FoldersScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
-              {editingSubfolder ? 'Modifica Sottocartella' : 'Nuova Sottocartella'}
+              {editingSubfolder ? T('edit_subfolder') : T('new_subfolder')}
             </Text>
             <TextInput
               style={styles.modalInput}
-              placeholder="Nome sottocartella"
+              placeholder={T('subfolder_name')}
               placeholderTextColor="#666"
               value={newSubfolderName}
               onChangeText={setNewSubfolderName}
@@ -445,7 +447,7 @@ export default function FoldersScreen() {
                   setNewSubfolderName('');
                 }}
               >
-                <Text style={styles.modalCancelText}>Annulla</Text>
+                <Text style={styles.modalCancelText}>{T('cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalSaveButton, saving && styles.buttonDisabled]}
@@ -455,7 +457,7 @@ export default function FoldersScreen() {
                 {saving ? (
                   <ActivityIndicator color="#fff" size="small" />
                 ) : (
-                  <Text style={styles.modalSaveText}>Salva</Text>
+                  <Text style={styles.modalSaveText}>{T('save')}</Text>
                 )}
               </TouchableOpacity>
             </View>
