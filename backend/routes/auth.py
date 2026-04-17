@@ -46,13 +46,31 @@ async def exchange_session(request: Request):
             "created_at": datetime.now(timezone.utc),
         })
 
+    # Migrate anonymous device data into the authenticated user on FIRST login from this device
+    device_id = request.headers.get("X-Device-Id", "").strip()
+    migrated = {"recipes": 0, "folders": 0, "subfolders": 0}
+    if device_id and 16 <= len(device_id) <= 128:
+        anon_user_id = f"device_{device_id}"
+        # Only migrate the user's own anonymous data, not someone else's
+        res_r = await db.recipes.update_many({"user_id": anon_user_id}, {"$set": {"user_id": user_id}})
+        res_f = await db.folders.update_many({"user_id": anon_user_id}, {"$set": {"user_id": user_id}})
+        res_s = await db.subfolders.update_many({"user_id": anon_user_id}, {"$set": {"user_id": user_id}})
+        migrated = {
+            "recipes": res_r.modified_count,
+            "folders": res_f.modified_count,
+            "subfolders": res_s.modified_count,
+        }
+
     await db.user_sessions.insert_one({
         "user_id": user_id,
         "session_token": session_token,
         "expires_at": datetime.now(timezone.utc) + timedelta(days=7),
         "created_at": datetime.now(timezone.utc),
     })
-    return {"user_id": user_id, "email": email, "name": name, "picture": picture, "session_token": session_token}
+    return {
+        "user_id": user_id, "email": email, "name": name, "picture": picture,
+        "session_token": session_token, "migrated": migrated,
+    }
 
 
 @router.get("/auth/me")

@@ -191,14 +191,22 @@ export default function RecipeDetailScreen() {
             }
           }
         }
-      } else if (data.fallback_links && data.fallback_links.length > 0) {
-        // Open in-app WebView downloader (tries SSSInstagram/FDownloader)
-        router.push({
-          pathname: '/web-downloader',
-          params: { url: recipe.source_url, platform: recipe.platform },
-        });
       } else {
-        Linking.openURL(recipe.source_url);
+        // Server-side download failed. Instagram/Facebook often block datacenter IPs,
+        // so we redirect the user to a browser downloader where their phone's IP works.
+        const src = recipe.source_url;
+        const browserUrl = recipe.platform === 'facebook'
+          ? `https://snapsave.app/en?url=${encodeURIComponent(src)}`
+          : `https://snapinst.to/en?url=${encodeURIComponent(src)}`;
+        Alert.alert(
+          T('download_alt'),
+          T('use_external'),
+          [
+            { text: T('open_in_browser'), onPress: () => Linking.openURL(browserUrl) },
+            { text: T('try_web_downloader'), onPress: () => router.push({ pathname: '/web-downloader', params: { url: src, platform: recipe.platform } }) },
+            { text: T('cancel'), style: 'cancel' as const },
+          ],
+        );
       }
     } catch (e) {
       console.log('Download error:', e);
