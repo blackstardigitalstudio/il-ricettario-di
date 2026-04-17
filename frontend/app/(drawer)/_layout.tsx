@@ -17,30 +17,10 @@ function CustomDrawerContent(props: any) {
   const [showEditName, setShowEditName] = useState(false);
   const [showLangPicker, setShowLangPicker] = useState(false);
   const [newName, setNewName] = useState('');
-  const [igConnected, setIgConnected] = useState(false);
-  const [igUsername, setIgUsername] = useState('');
 
   useEffect(() => {
     loadUser();
-    loadIgStatus();
   }, []);
-
-  const loadIgStatus = async () => {
-    try {
-      const res = await authFetch('/api/instagram/session');
-      if (res.ok) {
-        const data = await res.json();
-        setIgConnected(!!data.connected);
-        setIgUsername(data.username || '');
-      }
-    } catch (e) { /* ignore */ }
-  };
-
-  // Re-check IG status when drawer opens
-  useEffect(() => {
-    const unsub = props.navigation?.addListener?.('drawerOpen', loadIgStatus);
-    return () => { if (unsub) unsub(); };
-  }, [props.navigation]);
 
   const loadUser = async () => {
     try {
@@ -100,27 +80,6 @@ function CustomDrawerContent(props: any) {
         },
       },
     ]);
-  };
-
-  const handleIgToggle = () => {
-    if (igConnected) {
-      Alert.alert(T('ig_disconnect'), T('ig_disconnect_confirm'), [
-        { text: T('cancel'), style: 'cancel' },
-        {
-          text: T('ig_disconnect'), style: 'destructive',
-          onPress: async () => {
-            try {
-              await authFetch('/api/instagram/session', { method: 'DELETE' });
-              setIgConnected(false);
-              setIgUsername('');
-            } catch (e) { /* ignore */ }
-          },
-        },
-      ]);
-    } else {
-      props.navigation.closeDrawer();
-      setTimeout(() => router.push('/instagram-login'), 150);
-    }
   };
 
   const currentLang = LANGUAGES.find(l => l.code === lang) || LANGUAGES[0];
