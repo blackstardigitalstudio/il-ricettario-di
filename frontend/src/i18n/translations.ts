@@ -153,7 +153,6 @@ const translations: { [lang in LangCode]: Translations } = {
     analyzing_video: 'Analisi video in corso... (6 fotogrammi)',
     move_to_folder: 'Sposta in cartella',
     move: 'Sposta',
-    no_folder: 'Nessuna cartella',
     no_folders_yet: 'Non hai ancora cartelle. Creane una dal menu.',
   },
   en: {
@@ -293,7 +292,6 @@ const translations: { [lang in LangCode]: Translations } = {
     analyzing_video: 'Analyzing video... (6 frames)',
     move_to_folder: 'Move to folder',
     move: 'Move',
-    no_folder: 'No folder',
     no_folders_yet: 'No folders yet. Create one from the menu.',
   },
   es: {
