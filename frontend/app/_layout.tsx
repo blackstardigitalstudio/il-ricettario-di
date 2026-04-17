@@ -6,6 +6,7 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingVi
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { LangProvider } from '../src/context/LangContext';
 
 function WelcomeScreen({ onComplete }: { onComplete: (name: string) => void }) {
   const [name, setName] = useState('');
@@ -71,12 +72,14 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <StatusBar style="light" />
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#0f0f0f' } }}>
-        <Stack.Screen name="(drawer)" options={{ headerShown: false }} />
-        <Stack.Screen name="recipe/[id]" options={{ headerShown: false }} />
-        <Stack.Screen name="folder/[id]" options={{ headerShown: false }} />
-      </Stack>
+      <LangProvider>
+        <StatusBar style="light" />
+        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#0f0f0f' } }}>
+          <Stack.Screen name="(drawer)" options={{ headerShown: false }} />
+          <Stack.Screen name="recipe/[id]" options={{ headerShown: false }} />
+          <Stack.Screen name="folder/[id]" options={{ headerShown: false }} />
+        </Stack>
+      </LangProvider>
     </GestureHandlerRootView>
   );
 }
