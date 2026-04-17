@@ -21,7 +21,11 @@ interface Recipe {
   ingredients?: string; ingredients_status?: string;
   tags?: string[]; difficulty?: string; prep_time?: number; cook_time?: number;
   is_favorite?: boolean;
+  folder_id?: string | null; subfolder_id?: string | null;
 }
+
+interface Folder { id: string; name: string; }
+interface Subfolder { id: string; name: string; folder_id: string; }
 
 type Difficulty = 'easy' | 'medium' | 'hard' | '';
 type EditFocus = 'all' | 'name' | 'caption' | 'notes' | 'ingredients' | 'transcription';
@@ -52,6 +56,14 @@ export default function RecipeDetailScreen() {
   const [editCook, setEditCook] = useState('');
   const [saving, setSaving] = useState(false);
   const [pollingTimer, setPollingTimer] = useState<ReturnType<typeof setInterval> | null>(null);
+
+  // Move-to-folder state
+  const [showMoveModal, setShowMoveModal] = useState(false);
+  const [folders, setFolders] = useState<Folder[]>([]);
+  const [subfolders, setSubfolders] = useState<Subfolder[]>([]);
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [selectedSubfolderId, setSelectedSubfolderId] = useState<string | null>(null);
+  const [moving, setMoving] = useState(false);
 
   const scrollRef = useRef<ScrollView>(null);
 
@@ -100,6 +112,38 @@ export default function RecipeDetailScreen() {
       if (res.ok) { startPolling(); }
       else { setRecipe({ ...recipe, ingredients_status: 'error' }); }
     } catch (e) { setRecipe({ ...recipe, ingredients_status: 'error' }); }
+  };
+
+  const openMoveModal = async () => {
+    if (!recipe) return;
+    setSelectedFolderId(recipe.folder_id || null);
+    setSelectedSubfolderId(recipe.subfolder_id || null);
+    setShowMoveModal(true);
+    // Load folders and subfolders
+    try {
+      const [fRes, sRes] = await Promise.all([
+        authFetch('/api/folders'),
+        authFetch('/api/subfolders'),
+      ]);
+      if (fRes.ok) setFolders(await fRes.json());
+      if (sRes.ok) setSubfolders(await sRes.json());
+    } catch (e) { /* */ }
+  };
+
+  const confirmMove = async () => {
+    if (!recipe) return;
+    setMoving(true);
+    try {
+      const body: any = {
+        folder_id: selectedFolderId || null,
+        subfolder_id: selectedSubfolderId || null,
+      };
+      const res = await authFetch(`/api/recipes/${recipe.id}`, {
+        method: 'PUT', body: JSON.stringify(body),
+      });
+      if (res.ok) { setRecipe(await res.json()); setShowMoveModal(false); }
+    } catch (e) { /* */ }
+    finally { setMoving(false); }
   };
 
   const toggleFavorite = async () => {
@@ -286,6 +330,9 @@ export default function RecipeDetailScreen() {
         <Text style={s.hTitle} numberOfLines={1}>{recipe.name}</Text>
         <TouchableOpacity style={s.hBtn} onPress={toggleFavorite} testID="fav-btn">
           <Ionicons name={recipe.is_favorite ? 'star' : 'star-outline'} size={22} color={recipe.is_favorite ? '#FFD700' : '#aaa'} />
+        </TouchableOpacity>
+        <TouchableOpacity style={s.hBtn} onPress={openMoveModal} testID="move-btn">
+          <Ionicons name="folder-open-outline" size={20} color="#6C3DC1" />
         </TouchableOpacity>
         <TouchableOpacity style={s.hBtn} onPress={() => openEditModal('all')} testID="edit-btn">
           <Ionicons name="pencil" size={20} color="#FF6B35" />
@@ -528,6 +575,70 @@ export default function RecipeDetailScreen() {
           </KeyboardAvoidingView>
         </View>
       </Modal>
+
+      {/* Move-to-folder Modal */}
+      <Modal visible={showMoveModal} transparent animationType="slide" onRequestClose={() => setShowMoveModal(false)}>
+        <View style={s.mOverlay}>
+          <View style={s.mContent}>
+            <View style={s.mHead}>
+              <Text style={s.mTitle}>📁 {T('move_to_folder')}</Text>
+              <TouchableOpacity onPress={() => setShowMoveModal(false)}>
+                <Ionicons name="close" size={26} color="#fff" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ maxHeight: 400 }}>
+              <TouchableOpacity
+                style={[s.folderRow, !selectedFolderId && s.folderRowActive]}
+                onPress={() => { setSelectedFolderId(null); setSelectedSubfolderId(null); }}
+              >
+                <Ionicons name="home-outline" size={20} color={!selectedFolderId ? '#FF6B35' : '#888'} />
+                <Text style={[s.folderLabel, !selectedFolderId && s.folderLabelActive]}>{T('no_folder')}</Text>
+                {!selectedFolderId ? <Ionicons name="checkmark-circle" size={20} color="#FF6B35" /> : null}
+              </TouchableOpacity>
+              {folders.map((f) => {
+                const isActive = selectedFolderId === f.id;
+                const subs = subfolders.filter((sf) => sf.folder_id === f.id);
+                return (
+                  <View key={f.id}>
+                    <TouchableOpacity
+                      style={[s.folderRow, isActive && !selectedSubfolderId && s.folderRowActive]}
+                      onPress={() => { setSelectedFolderId(f.id); setSelectedSubfolderId(null); }}
+                    >
+                      <Ionicons name="folder" size={20} color="#6C3DC1" />
+                      <Text style={s.folderLabel}>{f.name}</Text>
+                      {isActive && !selectedSubfolderId ? <Ionicons name="checkmark-circle" size={20} color="#FF6B35" /> : null}
+                    </TouchableOpacity>
+                    {isActive && subs.length > 0 ? (
+                      <View style={{ paddingLeft: 20 }}>
+                        {subs.map((sf) => {
+                          const subActive = selectedSubfolderId === sf.id;
+                          return (
+                            <TouchableOpacity
+                              key={sf.id}
+                              style={[s.folderRow, subActive && s.folderRowActive]}
+                              onPress={() => setSelectedSubfolderId(sf.id)}
+                            >
+                              <Ionicons name="folder-outline" size={18} color="#aaa" />
+                              <Text style={s.folderLabel}>{sf.name}</Text>
+                              {subActive ? <Ionicons name="checkmark-circle" size={20} color="#FF6B35" /> : null}
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    ) : null}
+                  </View>
+                );
+              })}
+              {folders.length === 0 ? (
+                <Text style={[s.empty, { textAlign: 'center', marginTop: 20 }]}>{T('no_folders_yet')}</Text>
+              ) : null}
+            </ScrollView>
+            <TouchableOpacity style={[s.mSave, moving && s.disabled]} onPress={confirmMove} disabled={moving}>
+              {moving ? <ActivityIndicator color="#fff" /> : <><Ionicons name="checkmark" size={22} color="#fff" /><Text style={s.mSaveText}>{T('move')}</Text></>}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -587,4 +698,8 @@ const s = StyleSheet.create({
   tagEdit: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FF6B3520', borderRadius: 12, paddingVertical: 4, paddingHorizontal: 10 },
   mSave: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#28a745', borderRadius: 12, padding: 16, marginTop: 20, marginBottom: 20, gap: 8 },
   mSaveText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  folderRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 12, borderRadius: 10, backgroundColor: '#252525', marginBottom: 6, borderWidth: 1, borderColor: '#2a2a2a' },
+  folderRowActive: { backgroundColor: '#FF6B3520', borderColor: '#FF6B35' },
+  folderLabel: { flex: 1, color: '#ddd', fontSize: 15 },
+  folderLabelActive: { color: '#FF6B35', fontWeight: '600' },
 });

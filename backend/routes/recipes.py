@@ -95,23 +95,24 @@ async def update_recipe(recipe_id: str, update: RecipeUpdate, request: Request):
     recipe = await db.recipes.find_one({"id": recipe_id, "user_id": user["user_id"]}, {"_id": 0})
     if not recipe:
         raise HTTPException(status_code=404, detail="Ricetta non trovata")
+    provided = update.model_dump(exclude_unset=True)
     data = {"updated_at": datetime.now(timezone.utc)}
-    if update.name is not None: data["name"] = update.name
-    if update.folder_id is not None: data["folder_id"] = update.folder_id
-    if update.subfolder_id is not None: data["subfolder_id"] = update.subfolder_id
-    if update.caption is not None: data["caption"] = update.caption
-    if update.notes is not None: data["notes"] = update.notes
-    if update.transcription is not None:
-        data["transcription"] = update.transcription
+    if "name" in provided and provided["name"] is not None: data["name"] = provided["name"]
+    if "folder_id" in provided: data["folder_id"] = provided["folder_id"]  # allow None to unset
+    if "subfolder_id" in provided: data["subfolder_id"] = provided["subfolder_id"]
+    if "caption" in provided and provided["caption"] is not None: data["caption"] = provided["caption"]
+    if "notes" in provided and provided["notes"] is not None: data["notes"] = provided["notes"]
+    if "transcription" in provided and provided["transcription"] is not None:
+        data["transcription"] = provided["transcription"]
         # When user manually edits the recipe, mark as done so the UI shows it
-        if update.transcription.strip():
+        if provided["transcription"].strip():
             data["transcription_status"] = "done"
-    if update.ingredients is not None: data["ingredients"] = update.ingredients
-    if update.tags is not None: data["tags"] = update.tags
-    if update.difficulty is not None: data["difficulty"] = update.difficulty
-    if update.prep_time is not None: data["prep_time"] = update.prep_time
-    if update.cook_time is not None: data["cook_time"] = update.cook_time
-    if update.is_favorite is not None: data["is_favorite"] = update.is_favorite
+    if "ingredients" in provided and provided["ingredients"] is not None: data["ingredients"] = provided["ingredients"]
+    if "tags" in provided and provided["tags"] is not None: data["tags"] = provided["tags"]
+    if "difficulty" in provided and provided["difficulty"] is not None: data["difficulty"] = provided["difficulty"]
+    if "prep_time" in provided and provided["prep_time"] is not None: data["prep_time"] = provided["prep_time"]
+    if "cook_time" in provided and provided["cook_time"] is not None: data["cook_time"] = provided["cook_time"]
+    if "is_favorite" in provided and provided["is_favorite"] is not None: data["is_favorite"] = provided["is_favorite"]
     await db.recipes.update_one({"id": recipe_id}, {"$set": data})
     return await db.recipes.find_one({"id": recipe_id}, {"_id": 0})
 

@@ -151,6 +151,10 @@ const translations: { [lang in LangCode]: Translations } = {
     analyze_video_ingredients: 'Analizza video per ingredienti',
     reanalyze_video: 'Rianalizza video',
     analyzing_video: 'Analisi video in corso... (6 fotogrammi)',
+    move_to_folder: 'Sposta in cartella',
+    move: 'Sposta',
+    no_folder: 'Nessuna cartella',
+    no_folders_yet: 'Non hai ancora cartelle. Creane una dal menu.',
   },
   en: {
     welcome: 'Welcome!',
@@ -287,6 +291,10 @@ const translations: { [lang in LangCode]: Translations } = {
     analyze_video_ingredients: 'Analyze video for ingredients',
     reanalyze_video: 'Re-analyze video',
     analyzing_video: 'Analyzing video... (6 frames)',
+    move_to_folder: 'Move to folder',
+    move: 'Move',
+    no_folder: 'No folder',
+    no_folders_yet: 'No folders yet. Create one from the menu.',
   },
   es: {
     welcome: '¡Bienvenido!', whats_your_name: '¿Cómo te llamas?', enter_name: 'Tu nombre...', cookbook_of: 'El Recetario de', start: 'Empezar',
