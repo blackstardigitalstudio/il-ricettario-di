@@ -98,7 +98,38 @@ async def download_video_endpoint(request: Request, recipe_id: str):
     except Exception as e:
         logger.warning(f"yt-dlp download failed: {e}")
 
-    # 3. DownloadGram fallback (for Instagram when yt-dlp blocked)
+    # 3. SnapSave fallback (works for both Instagram & Facebook)
+    try:
+        from services.snapsave import snapsave_fetch
+        loop = asyncio.get_event_loop()
+        ss = await loop.run_in_executor(executor, snapsave_fetch, source_url)
+        if ss.get('video_url'):
+            ok = await _download_remote_file(ss['video_url'], str(out_path))
+            if ok:
+                # Save thumbnail too if we didn't have one yet
+                if ss.get('thumbnail_url') and not recipe.get("thumbnail_url"):
+                    try:
+                        async with httpx.AsyncClient(timeout=15) as hc:
+                            img_res = await hc.get(ss['thumbnail_url'])
+                            if img_res.status_code == 200 and img_res.headers.get('content-type', '').startswith('image'):
+                                b64 = base64.b64encode(img_res.content).decode('utf-8')
+                                await db.recipes.update_one(
+                                    {"id": recipe_id},
+                                    {"$set": {"thumbnail_url": f"data:image/jpeg;base64,{b64}"}},
+                                )
+                    except Exception:
+                        pass
+                await db.recipes.update_one(
+                    {"id": recipe_id},
+                    {"$set": {"local_video_path": str(out_path)}},
+                )
+                return {"success": True, "video_url": internal_url, "method": "snapsave"}
+        else:
+            logger.info(f"SnapSave no video for {recipe_id}: {ss.get('error', 'unknown')}")
+    except Exception as e:
+        logger.warning(f"SnapSave error: {e}")
+
+    # 4. DownloadGram fallback (for Instagram when yt-dlp blocked)
     try:
         async with httpx.AsyncClient(timeout=30) as http:
             res = await http.post(
@@ -131,17 +162,21 @@ async def download_video_endpoint(request: Request, recipe_id: str):
     except Exception as e:
         logger.error(f"DownloadGram error: {e}")
 
-    # 4. Fallback public download links
+    # 5. Fallback public download links (opened in in-app WebView)
     platform = recipe.get("platform", "")
-    encoded_url = source_url.replace("&", "%26")
+    encoded_url = httpx.QueryParams({'url': source_url}).get('url')  # simple encode
     fallback_links = []
     if platform == "instagram":
         fallback_links = [
-            {"name": "SnapInsta", "url": f"https://snapinst.to/?url={encoded_url}"},
-            {"name": "SaveInsta", "url": f"https://saveinsta.io/?url={encoded_url}"},
+            {"name": "SSSInstagram", "url": f"https://sssinstagram.com/?url={source_url}"},
+            {"name": "SnapInsta", "url": f"https://snapinst.to/?url={source_url}"},
+            {"name": "SaveInsta", "url": f"https://saveinsta.io/?url={source_url}"},
         ]
     elif platform == "facebook":
-        fallback_links = [{"name": "FBDown", "url": f"https://fbdown.net/?url={encoded_url}"}]
+        fallback_links = [
+            {"name": "FDownloader", "url": f"https://fdownloader.net/?url={source_url}"},
+            {"name": "FBDown", "url": f"https://fbdown.net/?url={source_url}"},
+        ]
 
     return {"success": False, "fallback_links": fallback_links, "source_url": source_url, "method": "fallback"}
 

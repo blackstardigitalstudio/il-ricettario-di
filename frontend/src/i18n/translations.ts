@@ -145,6 +145,9 @@ const translations: { [lang in LangCode]: Translations } = {
     add_ingredients: 'Aggiungi ingredienti',
     add_procedure: 'Aggiungi procedimento',
     preparing_download: 'Preparazione download...',
+    download_hint_webview: 'Carica la ricetta sul sito qui sotto e tocca il suo pulsante download',
+    open_in_browser: 'Apri nel browser',
+    try_web_downloader: 'Prova con il downloader web',
   },
   en: {
     welcome: 'Welcome!',
@@ -275,6 +278,9 @@ const translations: { [lang in LangCode]: Translations } = {
     add_ingredients: 'Add ingredients',
     add_procedure: 'Add procedure',
     preparing_download: 'Preparing download...',
+    download_hint_webview: 'Load the recipe on the site below and tap its download button',
+    open_in_browser: 'Open in browser',
+    try_web_downloader: 'Try web downloader',
   },
   es: {
     welcome: '¡Bienvenido!', whats_your_name: '¿Cómo te llamas?', enter_name: 'Tu nombre...', cookbook_of: 'El Recetario de', start: 'Empezar',

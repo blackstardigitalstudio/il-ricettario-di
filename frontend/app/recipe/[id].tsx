@@ -135,13 +135,11 @@ export default function RecipeDetailScreen() {
           }
         }
       } else if (data.fallback_links && data.fallback_links.length > 0) {
-        Alert.alert(
-          T('download_alt'),
-          T('use_external'),
-          data.fallback_links.map((l: any) => ({
-            text: l.name, onPress: () => Linking.openURL(l.url)
-          })).concat([{ text: T('cancel'), style: 'cancel' as const }])
-        );
+        // Open in-app WebView downloader (tries SSSInstagram/FDownloader)
+        router.push({
+          pathname: '/web-downloader',
+          params: { url: recipe.source_url, platform: recipe.platform },
+        });
       } else {
         Linking.openURL(recipe.source_url);
       }
