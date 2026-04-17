@@ -520,73 +520,177 @@ async def do_ai_recipe_generation(recipe_id: str, recipe: dict):
 
 # ================= AUTO TITLE + COVER IMAGE =================
 
-async def auto_generate_title_and_cover(recipe_id: str, current_name: str, caption: str, source_url: str):
-    """Background task: generate AI title + AI cover image for a recipe"""
+def _ytdlp_info(url: str) -> dict:
+    """Blocking yt-dlp info extractor"""
+    opts = {
+        'quiet': True,
+        'no_warnings': True,
+        'skip_download': True,
+        'format': 'best',
+    }
     try:
-        # Step 1: Generate AI title from caption/URL
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            return ydl.extract_info(url, download=False) or {}
+    except Exception as e:
+        logger.warning(f"yt-dlp info failed: {e}")
+        return {}
+
+
+async def extract_real_media(source_url: str) -> dict:
+    """Try multiple methods to extract REAL caption + thumbnail from video (no invented content)"""
+    result = {"caption": "", "thumbnail_bytes": None, "thumbnail_mime": "image/jpeg"}
+    import re
+    import html as html_lib
+
+    # Method 1: yt-dlp (best when not rate-limited)
+    try:
+        loop = asyncio.get_event_loop()
+        info = await loop.run_in_executor(executor, _ytdlp_info, source_url)
+        if info:
+            desc = info.get('description') or info.get('title') or ''
+            if desc and not result['caption']:
+                result['caption'] = desc.strip()
+            thumb_url = info.get('thumbnail') or ''
+            if not thumb_url and info.get('thumbnails'):
+                # take highest resolution
+                thumbs = info.get('thumbnails') or []
+                if thumbs:
+                    thumb_url = thumbs[-1].get('url', '')
+            if thumb_url:
+                try:
+                    async with httpx.AsyncClient() as http:
+                        r = await http.get(thumb_url, timeout=15, follow_redirects=True,
+                                           headers={'User-Agent': 'Mozilla/5.0'})
+                        if r.status_code == 200 and 'image' in r.headers.get('content-type', ''):
+                            result['thumbnail_bytes'] = r.content
+                            result['thumbnail_mime'] = r.headers.get('content-type', 'image/jpeg').split(';')[0]
+                except Exception as e:
+                    logger.warning(f"yt-dlp thumb download error: {e}")
+    except Exception as e:
+        logger.warning(f"yt-dlp method error: {e}")
+
+    # Method 2: Scrape public page OG tags (works for most public IG/FB posts, no login needed)
+    if not result['caption'] or not result['thumbnail_bytes']:
+        try:
+            async with httpx.AsyncClient() as http:
+                page = await http.get(source_url, timeout=15, follow_redirects=True,
+                    headers={
+                        'User-Agent': 'Mozilla/5.0 (compatible; facebookexternalhit/1.1; +http://www.facebook.com/externalhit_uatext.php)',
+                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                        'Accept-Language': 'en-US,en;q=0.9',
+                    })
+                if page.status_code == 200:
+                    html = page.text
+                    # og:description or description meta
+                    m_desc = re.search(r'<meta\s+property=["\']og:description["\']\s+content=["\']([^"\']+)', html)
+                    if not m_desc:
+                        m_desc = re.search(r'<meta\s+name=["\']description["\']\s+content=["\']([^"\']+)', html)
+                    if m_desc and not result['caption']:
+                        result['caption'] = html_lib.unescape(m_desc.group(1)).strip()
+                    # og:image
+                    m_img = re.search(r'<meta\s+property=["\']og:image["\']\s+content=["\']([^"\']+)', html)
+                    if m_img and not result['thumbnail_bytes']:
+                        img_url = html_lib.unescape(m_img.group(1))
+                        try:
+                            r = await http.get(img_url, timeout=15, follow_redirects=True,
+                                headers={'User-Agent': 'Mozilla/5.0'})
+                            if r.status_code == 200 and 'image' in r.headers.get('content-type', ''):
+                                result['thumbnail_bytes'] = r.content
+                                result['thumbnail_mime'] = r.headers.get('content-type', 'image/jpeg').split(';')[0]
+                        except Exception:
+                            pass
+        except Exception as e:
+            logger.warning(f"OG scrape error: {e}")
+
+    # Method 3: DownloadGram API (fallback specific for Instagram)
+    if 'instagram' in source_url.lower() and (not result['caption'] or not result['thumbnail_bytes']):
+        try:
+            async with httpx.AsyncClient(timeout=25) as http:
+                res = await http.post('https://api.downloadgram.org/media',
+                    json={'url': source_url},
+                    headers={'User-Agent': 'Mozilla/5.0', 'Content-Type': 'application/json'})
+                if res.status_code == 200:
+                    text = html_lib.unescape(res.text.replace('\x20', ' ').replace('\x22', '"'))
+                    if not result['caption']:
+                        m_desc = re.search(r'description["\']?\s*[:=]\s*["\']([^"\']{10,})', text)
+                        if m_desc:
+                            result['caption'] = m_desc.group(1).strip()
+                    if not result['thumbnail_bytes']:
+                        cdn_urls = re.findall(r'(https://cdn\.downloadgram\.org/[^\s"\'<>\\]+)', text)
+                        for u in cdn_urls:
+                            try:
+                                head = await http.head(u, follow_redirects=True, timeout=10)
+                                ct = head.headers.get('content-type', '')
+                                if 'image' in ct:
+                                    r = await http.get(u, timeout=15, follow_redirects=True)
+                                    if r.status_code == 200:
+                                        result['thumbnail_bytes'] = r.content
+                                        result['thumbnail_mime'] = 'image/jpeg'
+                                        break
+                            except Exception:
+                                pass
+        except Exception as e:
+            logger.warning(f"DownloadGram media error: {e}")
+
+    return result
+
+
+async def auto_generate_title_and_cover(recipe_id: str, current_name: str, caption: str, source_url: str):
+    """Background task: extract REAL caption + REAL thumbnail from video, then generate AI title."""
+    try:
+        # STEP 1: Extract REAL caption + thumbnail from the video
+        media = await extract_real_media(source_url)
+        real_caption = (media.get('caption') or '').strip()
+        thumb_bytes = media.get('thumbnail_bytes')
+        thumb_mime = media.get('thumbnail_mime', 'image/jpeg')
+
+        updates = {}
+        existing_caption = caption or ''
+        # Prefer the extracted caption if longer/present
+        if real_caption and (not existing_caption or len(real_caption) > len(existing_caption)):
+            updates['caption'] = real_caption
+            caption = real_caption
+
+        if thumb_bytes:
+            import base64
+            b64 = base64.b64encode(thumb_bytes).decode('utf-8')
+            updates['thumbnail_url'] = f"data:{thumb_mime};base64,{b64}"
+            logger.info(f"Real thumbnail extracted for {recipe_id} ({len(thumb_bytes)} bytes)")
+        else:
+            logger.warning(f"No real thumbnail could be extracted for {recipe_id}")
+
+        if updates:
+            await db.recipes.update_one({"id": recipe_id}, {"$set": updates})
+
+        # STEP 2: Generate AI title from REAL caption
         from emergentintegrations.llm.chat import LlmChat, UserMessage
-        
+
         chat = LlmChat(
             api_key=os.getenv("EMERGENT_LLM_KEY"),
             session_id=f"title-{recipe_id}-{uuid.uuid4().hex[:6]}",
-            system_message="Sei un esperto di cucina italiana. Rispondi SOLO con il nome del piatto, niente altro. Max 5 parole."
+            system_message="Sei un esperto di cucina. Rispondi SOLO con il nome del piatto (2-5 parole), niente altro, nessuna introduzione."
         ).with_model("gemini", "gemini-2.5-flash")
-        
-        context = ""
+
         if caption:
-            context = f"Caption del video: {caption}"
-        elif current_name and current_name != "Nuova Ricetta":
-            context = f"Nome fornito: {current_name}"
+            context = f"Caption del video: {caption[:800]}"
         else:
             context = f"URL del video: {source_url}"
-        
-        title_prompt = f"Analizza questa ricetta e dammi il nome del piatto in italiano (es: 'Pasta alla Carbonara', 'Tiramisù classico'):\n\n{context}"
+
+        title_prompt = (
+            "Analizza questa ricetta video e dimmi SOLO il nome del piatto in italiano "
+            "(esempi: 'Pasta alla Carbonara', 'Tiramisù classico', 'Tacos al Pastor'):\n\n"
+            f"{context}"
+        )
         title_response = await chat.send_message(UserMessage(text=title_prompt))
         ai_title = str(title_response).strip().strip('"').strip("'") if title_response else ""
-        
-        if ai_title and len(ai_title) > 2 and len(ai_title) < 60:
+
+        if ai_title and 2 < len(ai_title) < 60:
             await db.recipes.update_one({"id": recipe_id}, {"$set": {"name": ai_title}})
             logger.info(f"Auto-title for {recipe_id}: {ai_title}")
-        else:
-            ai_title = current_name  # Fallback
-        
-        # Step 2: Get FREE cover image from Foodish API
-        import httpx as httpx_client
-        
-        # Map dish name to food category
-        food_categories = {
-            'pasta': ['pasta', 'spaghetti', 'penne', 'rigatoni', 'carbonara', 'amatriciana', 'cacio', 'gricia', 'bolognese', 'lasagna', 'tagliatelle', 'fettuccine', 'linguine', 'bucatini'],
-            'pizza': ['pizza', 'margherita', 'focaccia'],
-            'rice': ['riso', 'risotto', 'arancin'],
-            'dessert': ['tiramisu', 'tiramisù', 'torta', 'dolce', 'panna cotta', 'cannoli', 'biscott', 'gelato', 'crostata', 'cioccolat'],
-            'burger': ['burger', 'hamburger', 'panino'],
-        }
-        
-        title_lower = ai_title.lower()
-        category = 'pasta'  # default
-        for cat, keywords in food_categories.items():
-            if any(kw in title_lower for kw in keywords):
-                category = cat
-                break
-        
-        try:
-            async with httpx_client.AsyncClient() as http:
-                # Get random food image from Foodish (100% free)
-                food_res = await http.get(f'https://foodish-api.com/api/images/{category}', timeout=10)
-                if food_res.status_code == 200:
-                    image_url = food_res.json().get('image', '')
-                    if image_url:
-                        # Download the image and convert to base64
-                        img_res = await http.get(image_url, timeout=15)
-                        if img_res.status_code == 200 and 'image' in img_res.headers.get('content-type', ''):
-                            import base64
-                            img_b64 = base64.b64encode(img_res.content).decode('utf-8')
-                            thumbnail_url = f"data:image/jpeg;base64,{img_b64}"
-                            await db.recipes.update_one({"id": recipe_id}, {"$set": {"thumbnail_url": thumbnail_url}})
-                            logger.info(f"Auto-cover (Foodish/{category}) for {recipe_id}")
-        except Exception as img_err:
-            logger.error(f"Foodish cover error: {img_err}")
-        
+
+        # NOTE: No Foodish fallback. If no real thumbnail could be extracted,
+        # the frontend shows a placeholder and the user can upload manually.
+
     except Exception as e:
         logger.error(f"Auto-generate error for {recipe_id}: {e}")
 
