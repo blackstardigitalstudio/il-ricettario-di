@@ -1,368 +1,278 @@
-#!/usr/bin/env python3
-"""
-Backend API Testing for Recipe Manager
-Tests all CRUD operations for folders, subfolders, and recipes
-"""
+"""Regression test for the refactored Il Ricettario backend.
 
-import requests
-import json
+Tests all endpoints at http://localhost:8001/api after the monolithic
+server.py was split into config/db/models/services/routes modules.
+All endpoint paths & response shapes MUST remain identical.
+"""
 import sys
-from typing import Dict, Any, Optional
+import requests
 
-# Backend URL from frontend .env
-BACKEND_URL = "https://food-organizer-24.preview.emergentagent.com/api"
+BASE = "http://localhost:8001/api"
 
-class RecipeManagerTester:
-    def __init__(self):
-        self.base_url = BACKEND_URL
-        self.session = requests.Session()
-        self.test_data = {}
-        self.results = []
-        
-    def log_result(self, test_name: str, success: bool, details: str = "", response_data: Any = None):
-        """Log test result"""
-        result = {
-            "test": test_name,
-            "success": success,
-            "details": details,
-            "response_data": response_data
-        }
-        self.results.append(result)
-        status = "✅ PASS" if success else "❌ FAIL"
-        print(f"{status} {test_name}: {details}")
-        if response_data and not success:
-            print(f"   Response: {response_data}")
-    
-    def test_welcome_endpoint(self):
-        """Test GET /api/ - Should return welcome message"""
-        try:
-            response = self.session.get(f"{self.base_url}/")
-            if response.status_code == 200:
-                data = response.json()
-                if "message" in data and "Recipe Manager" in data["message"]:
-                    self.log_result("Welcome Endpoint", True, f"Status: {response.status_code}, Message: {data['message']}")
-                    return True
-                else:
-                    self.log_result("Welcome Endpoint", False, f"Unexpected response format: {data}")
-                    return False
-            else:
-                self.log_result("Welcome Endpoint", False, f"Status: {response.status_code}", response.text)
-                return False
-        except Exception as e:
-            self.log_result("Welcome Endpoint", False, f"Exception: {str(e)}")
-            return False
-    
-    def test_create_folder(self):
-        """Test POST /api/folders - Create a new folder with name 'Dolci'"""
-        try:
-            payload = {"name": "Dolci"}
-            response = self.session.post(f"{self.base_url}/folders", json=payload)
-            
-            if response.status_code == 200:
-                data = response.json()
-                if "id" in data and "name" in data and data["name"] == "Dolci":
-                    self.test_data["folder_id"] = data["id"]
-                    self.log_result("Create Folder", True, f"Created folder 'Dolci' with ID: {data['id']}")
-                    return True
-                else:
-                    self.log_result("Create Folder", False, f"Unexpected response format: {data}")
-                    return False
-            else:
-                self.log_result("Create Folder", False, f"Status: {response.status_code}", response.text)
-                return False
-        except Exception as e:
-            self.log_result("Create Folder", False, f"Exception: {str(e)}")
-            return False
-    
-    def test_get_folders(self):
-        """Test GET /api/folders - Should return list of folders"""
-        try:
-            response = self.session.get(f"{self.base_url}/folders")
-            
-            if response.status_code == 200:
-                data = response.json()
-                if isinstance(data, list):
-                    # Check if our created folder is in the list
-                    folder_found = any(folder.get("name") == "Dolci" for folder in data)
-                    if folder_found:
-                        self.log_result("Get Folders", True, f"Retrieved {len(data)} folders, including 'Dolci'")
-                        return True
-                    else:
-                        self.log_result("Get Folders", False, f"'Dolci' folder not found in list of {len(data)} folders")
-                        return False
-                else:
-                    self.log_result("Get Folders", False, f"Expected list, got: {type(data)}")
-                    return False
-            else:
-                self.log_result("Get Folders", False, f"Status: {response.status_code}", response.text)
-                return False
-        except Exception as e:
-            self.log_result("Get Folders", False, f"Exception: {str(e)}")
-            return False
-    
-    def test_create_subfolder(self):
-        """Test POST /api/subfolders - Create subfolder in the folder created"""
-        if "folder_id" not in self.test_data:
-            self.log_result("Create Subfolder", False, "No folder_id available from previous test")
-            return False
-        
-        try:
-            payload = {
-                "folder_id": self.test_data["folder_id"],
-                "name": "Tiramisù Recipes"
-            }
-            response = self.session.post(f"{self.base_url}/subfolders", json=payload)
-            
-            if response.status_code == 200:
-                data = response.json()
-                if "id" in data and "name" in data and data["folder_id"] == self.test_data["folder_id"]:
-                    self.test_data["subfolder_id"] = data["id"]
-                    self.log_result("Create Subfolder", True, f"Created subfolder '{data['name']}' with ID: {data['id']}")
-                    return True
-                else:
-                    self.log_result("Create Subfolder", False, f"Unexpected response format: {data}")
-                    return False
-            else:
-                self.log_result("Create Subfolder", False, f"Status: {response.status_code}", response.text)
-                return False
-        except Exception as e:
-            self.log_result("Create Subfolder", False, f"Exception: {str(e)}")
-            return False
-    
-    def test_get_subfolders(self):
-        """Test GET /api/subfolders?folder_id={folder_id} - Get subfolders for a folder"""
-        if "folder_id" not in self.test_data:
-            self.log_result("Get Subfolders", False, "No folder_id available from previous test")
-            return False
-        
-        try:
-            params = {"folder_id": self.test_data["folder_id"]}
-            response = self.session.get(f"{self.base_url}/subfolders", params=params)
-            
-            if response.status_code == 200:
-                data = response.json()
-                if isinstance(data, list):
-                    # Check if our created subfolder is in the list
-                    subfolder_found = any(
-                        subfolder.get("folder_id") == self.test_data["folder_id"] 
-                        for subfolder in data
-                    )
-                    if subfolder_found:
-                        self.log_result("Get Subfolders", True, f"Retrieved {len(data)} subfolders for folder")
-                        return True
-                    else:
-                        self.log_result("Get Subfolders", False, f"No subfolders found for folder_id: {self.test_data['folder_id']}")
-                        return False
-                else:
-                    self.log_result("Get Subfolders", False, f"Expected list, got: {type(data)}")
-                    return False
-            else:
-                self.log_result("Get Subfolders", False, f"Status: {response.status_code}", response.text)
-                return False
-        except Exception as e:
-            self.log_result("Get Subfolders", False, f"Exception: {str(e)}")
-            return False
-    
-    def test_extract_video(self):
-        """Test POST /api/extract - Test video extraction with URL"""
-        try:
-            payload = {"url": "https://www.instagram.com/reel/test123/"}
-            response = self.session.post(f"{self.base_url}/extract", json=payload)
-            
-            if response.status_code == 200:
-                data = response.json()
-                if "success" in data:
-                    # Note: This will likely fail for a test URL, but we're testing the endpoint structure
-                    if data["success"]:
-                        self.log_result("Extract Video", True, f"Video extraction successful: {data.get('platform', 'unknown')}")
-                        return True
-                    else:
-                        # Expected failure for test URL, but endpoint is working
-                        self.log_result("Extract Video", True, f"Endpoint working, expected failure for test URL: {data.get('error', 'No error message')}")
-                        return True
-                else:
-                    self.log_result("Extract Video", False, f"Unexpected response format: {data}")
-                    return False
-            else:
-                self.log_result("Extract Video", False, f"Status: {response.status_code}", response.text)
-                return False
-        except Exception as e:
-            self.log_result("Extract Video", False, f"Exception: {str(e)}")
-            return False
-    
-    def test_create_recipe(self):
-        """Test POST /api/recipes - Create a recipe"""
-        if "folder_id" not in self.test_data:
-            self.log_result("Create Recipe", False, "No folder_id available from previous test")
-            return False
-        
-        try:
-            payload = {
-                "name": "Tiramisù",
-                "source_url": "https://www.instagram.com/reel/test123/",
-                "folder_id": self.test_data["folder_id"],
-                "manual_caption": "Ricetta del tiramisù tradizionale"
-            }
-            response = self.session.post(f"{self.base_url}/recipes", json=payload)
-            
-            if response.status_code == 200:
-                data = response.json()
-                if "id" in data and "name" in data and data["name"] == "Tiramisù":
-                    self.test_data["recipe_id"] = data["id"]
-                    self.log_result("Create Recipe", True, f"Created recipe 'Tiramisù' with ID: {data['id']}")
-                    return True
-                else:
-                    self.log_result("Create Recipe", False, f"Unexpected response format: {data}")
-                    return False
-            else:
-                self.log_result("Create Recipe", False, f"Status: {response.status_code}", response.text)
-                return False
-        except Exception as e:
-            self.log_result("Create Recipe", False, f"Exception: {str(e)}")
-            return False
-    
-    def test_get_recipes(self):
-        """Test GET /api/recipes - Should return list of recipes"""
-        try:
-            response = self.session.get(f"{self.base_url}/recipes")
-            
-            if response.status_code == 200:
-                data = response.json()
-                if isinstance(data, list):
-                    # Check if our created recipe is in the list
-                    recipe_found = any(recipe.get("name") == "Tiramisù" for recipe in data)
-                    if recipe_found:
-                        self.log_result("Get Recipes", True, f"Retrieved {len(data)} recipes, including 'Tiramisù'")
-                        return True
-                    else:
-                        self.log_result("Get Recipes", False, f"'Tiramisù' recipe not found in list of {len(data)} recipes")
-                        return False
-                else:
-                    self.log_result("Get Recipes", False, f"Expected list, got: {type(data)}")
-                    return False
-            else:
-                self.log_result("Get Recipes", False, f"Status: {response.status_code}", response.text)
-                return False
-        except Exception as e:
-            self.log_result("Get Recipes", False, f"Exception: {str(e)}")
-            return False
-    
-    def test_update_recipe(self):
-        """Test PUT /api/recipes/{recipe_id} - Update the recipe name"""
-        if "recipe_id" not in self.test_data:
-            self.log_result("Update Recipe", False, "No recipe_id available from previous test")
-            return False
-        
-        try:
-            payload = {"name": "Tiramisù Classico"}
-            response = self.session.put(f"{self.base_url}/recipes/{self.test_data['recipe_id']}", json=payload)
-            
-            if response.status_code == 200:
-                data = response.json()
-                if "name" in data and data["name"] == "Tiramisù Classico":
-                    self.log_result("Update Recipe", True, f"Updated recipe name to: {data['name']}")
-                    return True
-                else:
-                    self.log_result("Update Recipe", False, f"Name not updated correctly: {data}")
-                    return False
-            else:
-                self.log_result("Update Recipe", False, f"Status: {response.status_code}", response.text)
-                return False
-        except Exception as e:
-            self.log_result("Update Recipe", False, f"Exception: {str(e)}")
-            return False
-    
-    def test_delete_recipe(self):
-        """Test DELETE /api/recipes/{recipe_id} - Delete the recipe"""
-        if "recipe_id" not in self.test_data:
-            self.log_result("Delete Recipe", False, "No recipe_id available from previous test")
-            return False
-        
-        try:
-            response = self.session.delete(f"{self.base_url}/recipes/{self.test_data['recipe_id']}")
-            
-            if response.status_code == 200:
-                data = response.json()
-                if "message" in data:
-                    self.log_result("Delete Recipe", True, f"Recipe deleted: {data['message']}")
-                    return True
-                else:
-                    self.log_result("Delete Recipe", False, f"Unexpected response format: {data}")
-                    return False
-            else:
-                self.log_result("Delete Recipe", False, f"Status: {response.status_code}", response.text)
-                return False
-        except Exception as e:
-            self.log_result("Delete Recipe", False, f"Exception: {str(e)}")
-            return False
-    
-    def run_all_tests(self):
-        """Run all tests in sequence"""
-        print(f"🚀 Starting Recipe Manager API Tests")
-        print(f"Backend URL: {self.base_url}")
-        print("=" * 60)
-        
-        tests = [
-            self.test_welcome_endpoint,
-            self.test_create_folder,
-            self.test_get_folders,
-            self.test_create_subfolder,
-            self.test_get_subfolders,
-            self.test_extract_video,
-            self.test_create_recipe,
-            self.test_get_recipes,
-            self.test_update_recipe,
-            self.test_delete_recipe
-        ]
-        
-        passed = 0
-        total = len(tests)
-        
-        for test in tests:
-            if test():
-                passed += 1
-            print()  # Empty line for readability
-        
-        print("=" * 60)
-        print(f"📊 Test Results: {passed}/{total} tests passed")
-        
-        if passed == total:
-            print("🎉 All tests passed!")
-            return True
-        else:
-            print("⚠️  Some tests failed. Check details above.")
-            return False
-    
-    def get_summary(self):
-        """Get a summary of test results"""
-        passed = sum(1 for result in self.results if result["success"])
-        total = len(self.results)
-        
-        summary = {
-            "total_tests": total,
-            "passed": passed,
-            "failed": total - passed,
-            "success_rate": f"{(passed/total)*100:.1f}%" if total > 0 else "0%",
-            "results": self.results
-        }
-        
-        return summary
+results = []  # list of (name, ok, detail)
+
+
+def record(name, ok, detail=""):
+    results.append((name, ok, detail))
+    status = "PASS" if ok else "FAIL"
+    print(f"[{status}] {name} {('- ' + detail) if detail else ''}")
+
+
+def safe_json(r):
+    try:
+        return r.json()
+    except Exception:
+        return None
+
+
+def test_welcome():
+    r = requests.get(f"{BASE}/")
+    ok = r.status_code == 200 and safe_json(r) == {"message": "Il Ricettario - API"}
+    record("GET /api/ welcome", ok, f"status={r.status_code} body={r.text[:200]}")
+
+
+def test_auth_me_logout():
+    r = requests.get(f"{BASE}/auth/me")
+    body = safe_json(r)
+    ok = r.status_code == 200 and isinstance(body, dict) and body.get("user_id") == "local_user"
+    record("GET /api/auth/me (DEFAULT_LOCAL_USER fallback)", ok, f"status={r.status_code} body={body}")
+
+    r = requests.post(f"{BASE}/auth/logout")
+    body = safe_json(r)
+    ok = r.status_code == 200 and body == {"message": "Logout effettuato"}
+    record("POST /api/auth/logout", ok, f"status={r.status_code} body={body}")
+
+
+def test_instagram_session():
+    r = requests.get(f"{BASE}/instagram/session")
+    body = safe_json(r)
+    ok = r.status_code == 200 and isinstance(body, dict) and body.get("connected") is False
+    record("GET /api/instagram/session (not connected)", ok, f"status={r.status_code} body={body}")
+
+    r = requests.delete(f"{BASE}/instagram/session")
+    body = safe_json(r)
+    ok = (
+        r.status_code == 200
+        and isinstance(body, dict)
+        and body.get("success") is True
+        and body.get("connected") is False
+    )
+    record("DELETE /api/instagram/session", ok, f"status={r.status_code} body={body}")
+
+
+def test_extract_invalid():
+    r = requests.post(f"{BASE}/extract", json={"url": "https://fake.invalid"})
+    body = safe_json(r)
+    ok = r.status_code == 200 and isinstance(body, dict) and body.get("success") is False and body.get("error")
+    record("POST /api/extract (unsupported URL)", ok, f"status={r.status_code} body={body}")
+
+
+def test_folders_crud():
+    r = requests.post(f"{BASE}/folders", json={"name": "Dolci"})
+    body = safe_json(r)
+    ok = r.status_code == 200 and body and body.get("name") == "Dolci" and body.get("id")
+    record("POST /api/folders", ok, f"status={r.status_code} body={body}")
+    if not ok:
+        return None
+    folder_id = body["id"]
+
+    r = requests.get(f"{BASE}/folders")
+    body = safe_json(r)
+    ok = r.status_code == 200 and isinstance(body, list) and any(f.get("id") == folder_id for f in body)
+    record("GET /api/folders (list contains created)", ok,
+           f"status={r.status_code} count={len(body) if isinstance(body, list) else 'NA'}")
+
+    r = requests.get(f"{BASE}/folders/{folder_id}")
+    body = safe_json(r)
+    ok = r.status_code == 200 and body and body.get("id") == folder_id
+    record("GET /api/folders/{id}", ok, f"status={r.status_code}")
+
+    r = requests.get(f"{BASE}/folders/nonexistent-xyz")
+    ok = r.status_code == 404
+    record("GET /api/folders/{bad_id} -> 404", ok, f"status={r.status_code}")
+
+    r = requests.put(f"{BASE}/folders/{folder_id}", json={"name": "Dolci Rinominati"})
+    body = safe_json(r)
+    ok = r.status_code == 200 and body and body.get("name") == "Dolci Rinominati"
+    record("PUT /api/folders/{id}", ok, f"status={r.status_code}")
+
+    return folder_id
+
+
+def test_subfolders_crud(folder_id):
+    r = requests.post(f"{BASE}/subfolders", json={"folder_id": folder_id, "name": "Torte"})
+    body = safe_json(r)
+    ok = r.status_code == 200 and body and body.get("name") == "Torte" and body.get("folder_id") == folder_id
+    record("POST /api/subfolders", ok, f"status={r.status_code} body={body}")
+    if not ok:
+        return None
+    sub_id = body["id"]
+
+    r = requests.get(f"{BASE}/subfolders", params={"folder_id": folder_id})
+    body = safe_json(r)
+    ok = r.status_code == 200 and isinstance(body, list) and any(s.get("id") == sub_id for s in body)
+    record("GET /api/subfolders?folder_id=", ok,
+           f"status={r.status_code} count={len(body) if isinstance(body, list) else 'NA'}")
+
+    r = requests.put(f"{BASE}/subfolders/{sub_id}", json={"name": "Torte Rinominate"})
+    body = safe_json(r)
+    ok = r.status_code == 200 and body and body.get("name") == "Torte Rinominate"
+    record("PUT /api/subfolders/{id}", ok, f"status={r.status_code}")
+
+    r = requests.put(f"{BASE}/subfolders/nonexistent-xyz", json={"name": "x"})
+    ok = r.status_code == 404
+    record("PUT /api/subfolders/{bad_id} -> 404", ok, f"status={r.status_code}")
+
+    return sub_id
+
+
+def test_recipes_crud(folder_id, sub_id):
+    payload = {
+        "name": "Tiramisu della Nonna",
+        "source_url": "https://www.instagram.com/reel/ABCDEF/",
+        "manual_caption": "Ricetta tradizionale del tiramisu",
+        "folder_id": folder_id,
+        "subfolder_id": sub_id,
+        "notes": "Preparare il giorno prima",
+    }
+    r = requests.post(f"{BASE}/recipes", json=payload)
+    body = safe_json(r)
+    ok = (
+        r.status_code == 200
+        and body
+        and body.get("name") == "Tiramisu della Nonna"
+        and body.get("platform") == "instagram"
+        and body.get("caption") == "Ricetta tradizionale del tiramisu"
+        and body.get("folder_id") == folder_id
+    )
+    record("POST /api/recipes (instagram URL)", ok,
+           f"status={r.status_code} body_keys={list(body.keys()) if isinstance(body, dict) else body}")
+    if not ok:
+        return None
+    recipe_id = body["id"]
+
+    r = requests.get(f"{BASE}/recipes")
+    body = safe_json(r)
+    ok = r.status_code == 200 and isinstance(body, list) and any(x.get("id") == recipe_id for x in body)
+    record("GET /api/recipes", ok, f"status={r.status_code}")
+
+    r = requests.get(f"{BASE}/recipes/count")
+    body = safe_json(r)
+    ok = r.status_code == 200 and isinstance(body, dict) and isinstance(body.get("count"), int) and body["count"] >= 1
+    record("GET /api/recipes/count", ok, f"status={r.status_code} body={body}")
+
+    r = requests.get(f"{BASE}/recipes/random", params={"count": 3})
+    body = safe_json(r)
+    ok = r.status_code == 200 and isinstance(body, list)
+    record("GET /api/recipes/random?count=3", ok, f"status={r.status_code}")
+
+    r = requests.get(f"{BASE}/recipes/{recipe_id}")
+    body = safe_json(r)
+    ok = r.status_code == 200 and body and body.get("id") == recipe_id
+    record("GET /api/recipes/{id}", ok, f"status={r.status_code}")
+
+    r = requests.get(f"{BASE}/recipes/nonexistent-xyz")
+    ok = r.status_code == 404
+    record("GET /api/recipes/{bad_id} -> 404", ok, f"status={r.status_code}")
+
+    r = requests.put(f"{BASE}/recipes/{recipe_id}", json={"name": "Tiramisu Rivisitato", "notes": "Aggiornato"})
+    body = safe_json(r)
+    ok = r.status_code == 200 and body and body.get("name") == "Tiramisu Rivisitato" and body.get("notes") == "Aggiornato"
+    record("PUT /api/recipes/{id}", ok, f"status={r.status_code}")
+
+    r = requests.delete(f"{BASE}/recipes/{recipe_id}")
+    body = safe_json(r)
+    ok = r.status_code == 200 and body and body.get("message") == "Ricetta eliminata"
+    record("DELETE /api/recipes/{id}", ok, f"status={r.status_code} body={body}")
+
+    r = requests.get(f"{BASE}/recipes/{recipe_id}")
+    ok = r.status_code == 404
+    record("GET deleted recipe -> 404", ok, f"status={r.status_code}")
+
+
+def test_invalid_url_on_recipe():
+    r = requests.post(f"{BASE}/recipes", json={"name": "x", "source_url": "https://fake.invalid"})
+    ok = r.status_code == 400
+    record("POST /api/recipes (unsupported URL -> 400)", ok, f"status={r.status_code} body={r.text[:200]}")
+
+
+def test_delete_folder_cascade():
+    r = requests.post(f"{BASE}/folders", json={"name": "CartellaCascata"})
+    if r.status_code != 200:
+        record("Cascade setup: create folder", False, f"status={r.status_code}")
+        return
+    folder_id = r.json()["id"]
+
+    r = requests.post(f"{BASE}/subfolders", json={"folder_id": folder_id, "name": "SubCascata"})
+    sub_id = r.json()["id"] if r.status_code == 200 else None
+
+    r = requests.post(f"{BASE}/recipes", json={
+        "name": "Pasta alla Carbonara",
+        "source_url": "https://www.instagram.com/reel/CASCADE/",
+        "manual_caption": "Carbonara autentica",
+        "folder_id": folder_id,
+        "subfolder_id": sub_id,
+    })
+    if r.status_code != 200:
+        record("Cascade setup: create recipe", False, f"status={r.status_code}")
+        return
+    recipe_id = r.json()["id"]
+
+    r = requests.delete(f"{BASE}/folders/{folder_id}")
+    ok = r.status_code == 200
+    record("DELETE /api/folders/{id}", ok, f"status={r.status_code}")
+
+    r = requests.get(f"{BASE}/folders/{folder_id}")
+    ok = r.status_code == 404
+    record("Folder gone after delete -> 404", ok, f"status={r.status_code}")
+
+    r = requests.get(f"{BASE}/subfolders", params={"folder_id": folder_id})
+    body = safe_json(r)
+    ok = r.status_code == 200 and isinstance(body, list) and not any(s.get("id") == sub_id for s in body)
+    record("Cascade: subfolder deleted with folder", ok, f"leftover_count={len(body) if isinstance(body, list) else 'NA'}")
+
+    r = requests.get(f"{BASE}/recipes/{recipe_id}")
+    ok = r.status_code == 404
+    record("Cascade: recipe deleted with folder", ok, f"status={r.status_code}")
+
+
+def cleanup(folder_id, sub_id):
+    if sub_id:
+        requests.delete(f"{BASE}/subfolders/{sub_id}")
+    if folder_id:
+        requests.delete(f"{BASE}/folders/{folder_id}")
+
 
 def main():
-    """Main function to run tests"""
-    tester = RecipeManagerTester()
-    success = tester.run_all_tests()
-    
-    # Print detailed summary
-    summary = tester.get_summary()
-    print(f"\n📋 Detailed Summary:")
-    print(f"   Total Tests: {summary['total_tests']}")
-    print(f"   Passed: {summary['passed']}")
-    print(f"   Failed: {summary['failed']}")
-    print(f"   Success Rate: {summary['success_rate']}")
-    
-    # Exit with appropriate code
-    sys.exit(0 if success else 1)
+    print(f"\n=== Backend Regression Tests against {BASE} ===\n")
+    folder_id = None
+    sub_id = None
+    try:
+        test_welcome()
+        test_auth_me_logout()
+        test_instagram_session()
+        test_extract_invalid()
+        test_invalid_url_on_recipe()
+
+        folder_id = test_folders_crud()
+        sub_id = test_subfolders_crud(folder_id) if folder_id else None
+        if folder_id:
+            test_recipes_crud(folder_id, sub_id)
+
+        test_delete_folder_cascade()
+    except Exception as e:
+        record("UNEXPECTED EXCEPTION", False, repr(e))
+    finally:
+        cleanup(folder_id, sub_id)
+
+    total = len(results)
+    passed = sum(1 for _, ok, _ in results if ok)
+    print(f"\n=== Summary: {passed}/{total} passed ===\n")
+    for name, ok, detail in results:
+        if not ok:
+            print(f"  FAIL: {name} -- {detail}")
+    sys.exit(0 if passed == total else 1)
+
 
 if __name__ == "__main__":
     main()

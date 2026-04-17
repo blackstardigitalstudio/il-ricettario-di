@@ -1,0 +1,174 @@
+"""AI generation (Gemini Vision) for title + full recipe text."""
+import asyncio
+import base64
+import uuid
+
+from config import EMERGENT_LLM_KEY, logger
+from db import db
+from services.instagram import check_rate_limit
+from services.scraping import extract_real_media
+
+
+async def do_ai_recipe_generation(recipe_id: str, recipe: dict):
+    """Generate a full recipe (ingredients, steps) via Gemini multimodal."""
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
+
+        chat = LlmChat(
+            api_key=EMERGENT_LLM_KEY,
+            session_id=f"recipe-{recipe_id}-{uuid.uuid4().hex[:6]}",
+            system_message=(
+                "Sei un esperto chef italiano. Analizza l'immagine (se fornita) e la descrizione "
+                "per generare una ricetta dettagliata e realistica in italiano. Se non hai abbastanza info, "
+                "usa la tua conoscenza culinaria. Rispondi SOLO con la ricetta."
+            ),
+        ).with_model("gemini", "gemini-2.5-flash")
+
+        parts = []
+        if recipe.get("name"):
+            parts.append(f"Nome: {recipe['name']}")
+        if recipe.get("caption"):
+            parts.append(f"Descrizione: {recipe['caption']}")
+        if recipe.get("notes"):
+            parts.append(f"Note utente: {recipe['notes']}")
+        context = "\n".join(parts) or "Ricetta italiana"
+
+        prompt = f"""Analizza questa ricetta (e l'immagine se fornita) e genera la ricetta completa:
+
+{context}
+
+Formato richiesto:
+🍽️ NOME DEL PIATTO
+
+📝 INGREDIENTI:
+- (lista completa con quantità precise)
+
+👨‍🍳 PROCEDIMENTO:
+1. (passo dettagliato)
+2. ...
+
+⏱️ TEMPO DI PREPARAZIONE:
+🔥 TEMPO DI COTTURA:
+👥 PORZIONI:
+💡 CONSIGLI DELLO CHEF:"""
+
+        msg_content: list = [prompt]
+        try:
+            thumb = recipe.get("thumbnail_url", "")
+            if thumb and thumb.startswith("data:image"):
+                header, b64data = thumb.split(",", 1)
+                mime = header.split(";")[0].replace("data:", "")
+                msg_content.append(ImageContent(image_base64=b64data, mime_type=mime))
+        except Exception as img_err:
+            logger.warning(f"AI image attach err: {img_err}")
+
+        if len(msg_content) > 1:
+            response = await chat.send_message(UserMessage(content=msg_content))
+        else:
+            response = await chat.send_message(UserMessage(text=prompt))
+
+        text = str(response) if response else ""
+        status = "done" if len(text) > 20 else "error"
+        await db.recipes.update_one(
+            {"id": recipe_id},
+            {"$set": {"transcription_status": status, "transcription": text or "Errore"}},
+        )
+    except Exception as e:
+        logger.error(f"AI error {recipe_id}: {e}")
+        await db.recipes.update_one(
+            {"id": recipe_id},
+            {"$set": {"transcription_status": "error", "transcription": f"Errore: {e}"}},
+        )
+
+
+async def auto_generate_title_and_cover(recipe_id: str, current_name: str, caption: str,
+                                        source_url: str, user_id: str = "local_user"):
+    """Background task: extract real caption+thumbnail, then generate AI title."""
+    try:
+        if 'instagram' in source_url.lower() and not check_rate_limit(user_id):
+            logger.warning(f"Rate limit exceeded for user {user_id}")
+            await db.recipes.update_one({"id": recipe_id}, {"$set": {"name": current_name or "Nuova Ricetta"}})
+            return
+
+        media = await extract_real_media(source_url, user_id=user_id)
+        real_caption = (media.get('caption') or '').strip()
+        thumb_bytes = media.get('thumbnail_bytes')
+        thumb_mime = media.get('thumbnail_mime', 'image/jpeg')
+
+        updates = {}
+        existing_caption = caption or ''
+        if real_caption and (not existing_caption or len(real_caption) > len(existing_caption)):
+            updates['caption'] = real_caption
+            caption = real_caption
+
+        if thumb_bytes:
+            b64 = base64.b64encode(thumb_bytes).decode('utf-8')
+            updates['thumbnail_url'] = f"data:{thumb_mime};base64,{b64}"
+            logger.info(f"Real thumbnail extracted for {recipe_id} ({len(thumb_bytes)} bytes)")
+        else:
+            logger.warning(f"No real thumbnail could be extracted for {recipe_id}")
+
+        if updates:
+            await db.recipes.update_one({"id": recipe_id}, {"$set": updates})
+
+        # Generate AI title
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+
+        chat = LlmChat(
+            api_key=EMERGENT_LLM_KEY,
+            session_id=f"title-{recipe_id}-{uuid.uuid4().hex[:6]}",
+            system_message=(
+                "Sei un esperto di cucina. Rispondi SOLO con il nome del piatto (2-5 parole), "
+                "niente altro, nessuna introduzione."
+            ),
+        ).with_model("gemini", "gemini-2.5-flash")
+
+        if caption:
+            context = f"Caption del video: {caption[:800]}"
+        else:
+            context = f"URL del video: {source_url}"
+
+        title_prompt = (
+            "Analizza questa ricetta video e dimmi SOLO il nome del piatto in italiano "
+            "(esempi: 'Pasta alla Carbonara', 'Tiramisù classico', 'Tacos al Pastor'):\n\n"
+            f"{context}"
+        )
+        title_response = await chat.send_message(UserMessage(text=title_prompt))
+        ai_title = str(title_response).strip().strip('"').strip("'") if title_response else ""
+
+        if ai_title and 2 < len(ai_title) < 60:
+            await db.recipes.update_one({"id": recipe_id}, {"$set": {"name": ai_title}})
+            logger.info(f"Auto-title for {recipe_id}: {ai_title}")
+    except Exception as e:
+        logger.error(f"Auto-generate error for {recipe_id}: {e}")
+
+
+async def compress_old_videos(user_id: str):
+    """Compress and cache older videos for the user."""
+    import os, tempfile
+    from config import VIDEO_DIR, executor
+    from services.video import download_video_file, compress_video_file
+    try:
+        uncompressed = await db.recipes.find(
+            {"user_id": user_id, "video_compressed": False, "video_url": {"$ne": ""}}, {"_id": 0}
+        ).sort("created_at", 1).to_list(10)
+        loop = asyncio.get_event_loop()
+        for recipe in uncompressed:
+            try:
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    inp = os.path.join(tmpdir, "input.mp4")
+                    out = os.path.join(str(VIDEO_DIR), f"{recipe['id']}_compressed.mp4")
+                    ok = await loop.run_in_executor(executor, download_video_file, recipe['source_url'], inp)
+                    if ok and os.path.exists(inp):
+                        compressed = await loop.run_in_executor(executor, compress_video_file, inp, out)
+                        if compressed and os.path.exists(out):
+                            await db.recipes.update_one(
+                                {"id": recipe['id']},
+                                {"$set": {"video_compressed": True, "local_video_path": out}},
+                            )
+                        else:
+                            await db.recipes.update_one({"id": recipe['id']}, {"$set": {"video_compressed": True}})
+            except Exception:
+                await db.recipes.update_one({"id": recipe['id']}, {"$set": {"video_compressed": True}})
+    except Exception as e:
+        logger.error(f"Compression error: {e}")
