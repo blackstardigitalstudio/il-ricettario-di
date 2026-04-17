@@ -183,7 +183,8 @@ function CustomDrawerContent(props: any) {
 
       {/* Language Modal */}
       <Modal visible={showLangPicker} transparent animationType="fade" onRequestClose={() => setShowLangPicker(false)}>
-        <TouchableOpacity style={ds.modalOverlay} activeOpacity={1} onPress={() => setShowLangPicker(false)}>
+        <View style={ds.modalOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setShowLangPicker(false)} />
           <View style={ds.modalContent}>
             <Text style={ds.modalTitle}>{T('language')}</Text>
             <ScrollView style={{ maxHeight: 420 }}>
@@ -201,7 +202,7 @@ function CustomDrawerContent(props: any) {
               ))}
             </ScrollView>
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
     </DrawerContentScrollView>
   );

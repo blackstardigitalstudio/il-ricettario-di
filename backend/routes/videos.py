@@ -1,6 +1,7 @@
 """Video download & thumbnail endpoints."""
 import asyncio
 import base64
+import os
 import re
 import html as html_lib
 from fastapi import APIRouter, HTTPException, Request
@@ -9,9 +10,25 @@ import httpx
 
 from config import THUMB_DIR, DOWNLOAD_DIR, executor, logger
 from db import db, get_current_user
-from services.video import generate_thumbnail_from_url
+from services.video import generate_thumbnail_from_url, download_video_file
 
 router = APIRouter()
+
+
+async def _download_remote_file(url: str, dst_path: str) -> bool:
+    """Stream-download a remote URL to disk using httpx (async). Returns True on success."""
+    try:
+        async with httpx.AsyncClient(timeout=120, follow_redirects=True) as http:
+            async with http.stream('GET', url, headers={'User-Agent': 'Mozilla/5.0'}) as resp:
+                if resp.status_code != 200:
+                    return False
+                with open(dst_path, 'wb') as f:
+                    async for chunk in resp.aiter_bytes(chunk_size=65536):
+                        f.write(chunk)
+        return os.path.exists(dst_path) and os.path.getsize(dst_path) > 1000
+    except Exception as e:
+        logger.warning(f"httpx download err: {e}")
+        return False
 
 
 @router.post("/recipes/{recipe_id}/generate-thumbnail")
@@ -45,17 +62,45 @@ async def generate_thumbnail(recipe_id: str, request: Request):
 
 
 @router.post("/recipes/{recipe_id}/download-video")
-async def download_video_endpoint(recipe_id: str, request: Request):
+async def download_video_endpoint(request: Request, recipe_id: str):
+    """Download the video ONCE on the server, save to DOWNLOAD_DIR, return internal URL.
+
+    Strategy:
+      1. If already downloaded, return existing internal URL.
+      2. Try yt-dlp (works for Facebook + many Instagram).
+      3. Fallback: DownloadGram → grab CDN URL → server-side download.
+      4. Last resort: return external fallback links.
+    """
     user = await get_current_user(request)
     recipe = await db.recipes.find_one({"id": recipe_id, "user_id": user["user_id"]}, {"_id": 0})
     if not recipe:
         raise HTTPException(status_code=404, detail="Ricetta non trovata")
 
     source_url = recipe.get("source_url", "")
+    out_name = f"{recipe_id}.mp4"
+    out_path = DOWNLOAD_DIR / out_name
+    internal_url = f"/api/videos/{out_name}"
 
-    # Try DownloadGram (free)
+    # 1. Cached?
+    if out_path.exists() and out_path.stat().st_size > 10_000:
+        return {"success": True, "video_url": internal_url, "method": "cached"}
+
+    # 2. yt-dlp
     try:
-        async with httpx.AsyncClient(timeout=25) as http:
+        loop = asyncio.get_event_loop()
+        ok = await loop.run_in_executor(executor, download_video_file, source_url, str(out_path))
+        if ok and out_path.exists() and out_path.stat().st_size > 10_000:
+            await db.recipes.update_one(
+                {"id": recipe_id},
+                {"$set": {"local_video_path": str(out_path)}},
+            )
+            return {"success": True, "video_url": internal_url, "method": "ytdlp"}
+    except Exception as e:
+        logger.warning(f"yt-dlp download failed: {e}")
+
+    # 3. DownloadGram fallback (for Instagram when yt-dlp blocked)
+    try:
+        async with httpx.AsyncClient(timeout=30) as http:
             res = await http.post(
                 'https://api.downloadgram.org/media',
                 json={'url': source_url},
@@ -65,34 +110,28 @@ async def download_video_endpoint(recipe_id: str, request: Request):
                 text = res.text.replace('\x20', ' ').replace('\x22', '"')
                 text = html_lib.unescape(text)
                 cdn_urls = re.findall(r'(https://cdn\.downloadgram\.org/[^\s"\'<>\\]+)', text)
-                video_url, thumb_url = "", ""
+                video_src = ""
                 for u in cdn_urls:
                     try:
                         head = await http.head(u, follow_redirects=True, timeout=10)
                         ct = head.headers.get('content-type', '')
                         if 'video' in ct:
-                            video_url = u
-                        elif 'image' in ct:
-                            thumb_url = u
+                            video_src = u
+                            break
                     except Exception:
                         pass
-                if video_url:
-                    if thumb_url and not recipe.get("thumbnail_url"):
-                        try:
-                            img_res = await http.get(thumb_url, timeout=15)
-                            if img_res.status_code == 200:
-                                b64 = base64.b64encode(img_res.content).decode('utf-8')
-                                await db.recipes.update_one(
-                                    {"id": recipe_id},
-                                    {"$set": {"thumbnail_url": f"data:image/jpeg;base64,{b64}"}},
-                                )
-                        except Exception:
-                            pass
-                    return {"success": True, "video_url": video_url, "thumb_url": thumb_url, "method": "direct"}
+                if video_src:
+                    ok = await _download_remote_file(video_src, str(out_path))
+                    if ok:
+                        await db.recipes.update_one(
+                            {"id": recipe_id},
+                            {"$set": {"local_video_path": str(out_path)}},
+                        )
+                        return {"success": True, "video_url": internal_url, "method": "downloadgram"}
     except Exception as e:
         logger.error(f"DownloadGram error: {e}")
 
-    # Fallback public download links
+    # 4. Fallback public download links
     platform = recipe.get("platform", "")
     encoded_url = source_url.replace("&", "%26")
     fallback_links = []
@@ -109,6 +148,7 @@ async def download_video_endpoint(recipe_id: str, request: Request):
 
 @router.get("/videos/{filename}")
 async def serve_video(filename: str):
+    """Serve downloaded video file."""
     file_path = DOWNLOAD_DIR / filename
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Video non trovato")

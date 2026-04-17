@@ -1,6 +1,6 @@
 import { authFetch } from '../../src/utils/api';
 import { useLang } from '../../src/context/LangContext';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator,
   Alert, Linking, TextInput, KeyboardAvoidingView, Platform, Modal, Image, Share,
@@ -12,15 +12,19 @@ import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 
+const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || '';
+
 interface Recipe {
   id: string; name: string; source_url: string; platform: string;
   caption: string; thumbnail_url: string; notes: string;
   transcription: string; transcription_status: string; created_at: string;
+  ingredients?: string;
   tags?: string[]; difficulty?: string; prep_time?: number; cook_time?: number;
   is_favorite?: boolean;
 }
 
 type Difficulty = 'easy' | 'medium' | 'hard' | '';
+type EditFocus = 'all' | 'name' | 'caption' | 'notes' | 'ingredients' | 'transcription';
 
 export default function RecipeDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -33,11 +37,13 @@ export default function RecipeDetailScreen() {
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [uploadingThumb, setUploadingThumb] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [editFocus, setEditFocus] = useState<EditFocus>('all');
 
-  // Edit state (extended)
+  // Edit state
   const [editName, setEditName] = useState('');
   const [editCaption, setEditCaption] = useState('');
   const [editNotes, setEditNotes] = useState('');
+  const [editIngredients, setEditIngredients] = useState('');
   const [editTranscription, setEditTranscription] = useState('');
   const [editTags, setEditTags] = useState<string[]>([]);
   const [newTagInput, setNewTagInput] = useState('');
@@ -46,6 +52,8 @@ export default function RecipeDetailScreen() {
   const [editCook, setEditCook] = useState('');
   const [saving, setSaving] = useState(false);
   const [pollingTimer, setPollingTimer] = useState<ReturnType<typeof setInterval> | null>(null);
+
+  const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => { fetchRecipe(); return () => { if (pollingTimer) clearInterval(pollingTimer); }; }, [id]);
 
@@ -84,7 +92,6 @@ export default function RecipeDetailScreen() {
   const toggleFavorite = async () => {
     if (!recipe) return;
     const newVal = !recipe.is_favorite;
-    // Optimistic update
     setRecipe({ ...recipe, is_favorite: newVal });
     try {
       await authFetch(`/api/recipes/${recipe.id}`, {
@@ -104,16 +111,19 @@ export default function RecipeDetailScreen() {
       const data = await res.json();
 
       if (data.success && data.video_url) {
+        // Build full URL if it's an internal path
+        const fullUrl = data.video_url.startsWith('http') ? data.video_url : `${BACKEND_URL}${data.video_url}`;
+
         if (Platform.OS === 'web') {
-          window.open(data.video_url, '_blank');
+          window.open(fullUrl, '_blank');
           Alert.alert(T('download_started'), T('download_started'));
         } else {
           const fileUri = FileSystem.documentDirectory + `${recipe.name.replace(/[^a-zA-Z0-9]/g, '_')}.mp4`;
           const callback = (dp: FileSystem.DownloadProgressData) => {
-            const progress = dp.totalBytesWritten / dp.totalBytesExpectedToWrite;
+            const progress = dp.totalBytesWritten / (dp.totalBytesExpectedToWrite || 1);
             setDownloadProgress(Math.round(progress * 100));
           };
-          const downloadResumable = FileSystem.createDownloadResumable(data.video_url, fileUri, {}, callback);
+          const downloadResumable = FileSystem.createDownloadResumable(fullUrl, fileUri, {}, callback);
           const result = await downloadResumable.downloadAsync();
           if (result && result.uri) {
             setDownloadProgress(100);
@@ -146,6 +156,7 @@ export default function RecipeDetailScreen() {
     if (!recipe) return;
     let message = `🍽️ *${recipe.name}*\n\n`;
     if (recipe.caption) message += `📝 ${recipe.caption}\n\n`;
+    if (recipe.ingredients) message += `📋 ${T('ingredients')}:\n${recipe.ingredients}\n\n`;
     if (recipe.transcription && recipe.transcription_status === 'done') {
       message += `${recipe.transcription}\n\n`;
     }
@@ -182,11 +193,13 @@ export default function RecipeDetailScreen() {
     } catch (e) { setUploadingThumb(false); }
   };
 
-  const openEditModal = () => {
+  const openEditModal = (focus: EditFocus = 'all') => {
     if (!recipe) return;
+    setEditFocus(focus);
     setEditName(recipe.name);
     setEditCaption(recipe.caption);
     setEditNotes(recipe.notes);
+    setEditIngredients(recipe.ingredients || '');
     setEditTranscription(recipe.transcription || '');
     setEditTags(recipe.tags || []);
     setNewTagInput('');
@@ -214,6 +227,7 @@ export default function RecipeDetailScreen() {
         name: editName.trim(),
         caption: editCaption.trim(),
         notes: editNotes.trim(),
+        ingredients: editIngredients.trim(),
         transcription: editTranscription.trim(),
         tags: editTags,
         difficulty: editDifficulty,
@@ -245,6 +259,13 @@ export default function RecipeDetailScreen() {
   const difficultyLabel = (d?: string) => d === 'easy' ? T('easy') : d === 'medium' ? T('medium') : d === 'hard' ? T('hard') : '';
   const hasMeta = !!recipe.difficulty || (recipe.prep_time ?? 0) > 0 || (recipe.cook_time ?? 0) > 0;
 
+  // Small pencil icon component for each editable card
+  const EditIcon = ({ focus }: { focus: EditFocus }) => (
+    <TouchableOpacity style={s.editIcon} onPress={() => openEditModal(focus)} hitSlop={10}>
+      <Ionicons name="pencil" size={15} color="#FF6B35" />
+    </TouchableOpacity>
+  );
+
   return (
     <SafeAreaView style={s.container}>
       <View style={s.header}>
@@ -255,7 +276,7 @@ export default function RecipeDetailScreen() {
         <TouchableOpacity style={s.hBtn} onPress={toggleFavorite} testID="fav-btn">
           <Ionicons name={recipe.is_favorite ? 'star' : 'star-outline'} size={22} color={recipe.is_favorite ? '#FFD700' : '#aaa'} />
         </TouchableOpacity>
-        <TouchableOpacity style={s.hBtn} onPress={openEditModal} testID="edit-btn">
+        <TouchableOpacity style={s.hBtn} onPress={() => openEditModal('all')} testID="edit-btn">
           <Ionicons name="pencil" size={20} color="#FF6B35" />
         </TouchableOpacity>
         <TouchableOpacity style={s.hBtn} onPress={deleteRecipe} testID="delete-btn">
@@ -263,7 +284,7 @@ export default function RecipeDetailScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent}>
+      <ScrollView ref={scrollRef} style={s.scroll} contentContainerStyle={s.scrollContent}>
         {/* Cover */}
         <TouchableOpacity onPress={pickCoverImage} activeOpacity={0.8}>
           {recipe.thumbnail_url ? (
@@ -283,7 +304,9 @@ export default function RecipeDetailScreen() {
           <Text style={s.metaText}>{recipe.platform === 'instagram' ? 'Instagram' : 'Facebook'}</Text>
           <Text style={s.metaDate}>{new Date(recipe.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}</Text>
         </View>
-        <Text style={s.name}>{recipe.name}</Text>
+        <TouchableOpacity activeOpacity={0.7} onPress={() => openEditModal('name')}>
+          <Text style={s.name}>{recipe.name}</Text>
+        </TouchableOpacity>
 
         {/* Difficulty + Time row */}
         {hasMeta ? (
@@ -323,7 +346,7 @@ export default function RecipeDetailScreen() {
           <TouchableOpacity style={[s.actBtn, { backgroundColor: '#4CAF50' }, downloading && s.disabled]}
             onPress={downloadVideo} disabled={downloading} testID="download-btn">
             {downloading ? (
-              <><ActivityIndicator size="small" color="#fff" /><Text style={s.actText}>{downloadProgress > 0 ? `${downloadProgress}%` : T('downloading')}</Text></>
+              <><ActivityIndicator size="small" color="#fff" /><Text style={s.actText}>{downloadProgress > 0 ? `${downloadProgress}%` : T('preparing_download')}</Text></>
             ) : (
               <><Ionicons name="download" size={18} color="#fff" /><Text style={s.actText}>{T('download')}</Text></>
             )}
@@ -338,23 +361,43 @@ export default function RecipeDetailScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Caption */}
-        {recipe.caption ? (
-          <View style={s.card}>
-            <View style={s.cardH}><Ionicons name="document-text-outline" size={16} color="#FF6B35" /><Text style={s.cardT}>{T('description')}</Text></View>
-            <Text style={s.cardBody}>{recipe.caption}</Text>
-          </View>
-        ) : null}
-
-        {/* Notes */}
+        {/* Caption (editable) */}
         <View style={s.card}>
-          <View style={s.cardH}><Ionicons name="create-outline" size={16} color="#FF6B35" /><Text style={s.cardT}>{T('personal_notes')}</Text></View>
+          <View style={s.cardH}>
+            <Ionicons name="document-text-outline" size={16} color="#FF6B35" />
+            <Text style={s.cardT}>{T('description')}</Text>
+            <EditIcon focus="caption" />
+          </View>
+          {recipe.caption ? <Text style={s.cardBody}>{recipe.caption}</Text> : <Text style={s.empty}>{T('tap_pencil_to_add')}</Text>}
+        </View>
+
+        {/* Ingredients (editable) */}
+        <View style={s.card}>
+          <View style={s.cardH}>
+            <Ionicons name="list" size={16} color="#4CAF50" />
+            <Text style={s.cardT}>🍅 {T('ingredients')}</Text>
+            <EditIcon focus="ingredients" />
+          </View>
+          {recipe.ingredients ? <Text style={s.cardBody}>{recipe.ingredients}</Text> : <Text style={s.empty}>{T('tap_pencil_to_add')}</Text>}
+        </View>
+
+        {/* Notes (editable) */}
+        <View style={s.card}>
+          <View style={s.cardH}>
+            <Ionicons name="create-outline" size={16} color="#FF6B35" />
+            <Text style={s.cardT}>{T('personal_notes')}</Text>
+            <EditIcon focus="notes" />
+          </View>
           {recipe.notes ? <Text style={s.cardBody}>{recipe.notes}</Text> : <Text style={s.empty}>{T('tap_pencil_to_add')}</Text>}
         </View>
 
-        {/* AI */}
+        {/* AI / Procedure */}
         <View style={s.card}>
-          <View style={s.cardH}><Ionicons name="sparkles" size={16} color="#FFD700" /><Text style={s.cardT}>{T('ai_recipe')}</Text></View>
+          <View style={s.cardH}>
+            <Ionicons name="sparkles" size={16} color="#FFD700" />
+            <Text style={s.cardT}>👨‍🍳 {T('procedure')}</Text>
+            {recipe.transcription_status === 'done' ? <EditIcon focus="transcription" /> : null}
+          </View>
           {recipe.transcription_status === 'done' ? <Text style={s.cardBody}>{recipe.transcription}</Text>
           : recipe.transcription_status === 'pending' || transcribing ? (
             <View style={s.row}><ActivityIndicator size="small" color="#FF6B35" /><Text style={s.rowText}>{T('generating')}</Text></View>
@@ -370,7 +413,7 @@ export default function RecipeDetailScreen() {
       </ScrollView>
 
       {/* Edit Modal */}
-      <Modal visible={showEditModal} transparent animationType="slide">
+      <Modal visible={showEditModal} transparent animationType="slide" onRequestClose={() => setShowEditModal(false)}>
         <View style={s.mOverlay}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={s.mKAV}>
             <View style={s.mContent}>
@@ -379,61 +422,73 @@ export default function RecipeDetailScreen() {
                 <TouchableOpacity onPress={() => setShowEditModal(false)}><Ionicons name="close" size={26} color="#fff" /></TouchableOpacity>
               </View>
               <ScrollView keyboardShouldPersistTaps="handled">
-                <Text style={s.mLabel}>{T('edit_name')}</Text>
-                <TextInput style={s.mInput} value={editName} onChangeText={setEditName} />
+                {(editFocus === 'all' || editFocus === 'name') ? (<>
+                  <Text style={s.mLabel}>{T('edit_name')}</Text>
+                  <TextInput style={s.mInput} value={editName} onChangeText={setEditName} />
+                </>) : null}
 
-                <Text style={s.mLabel}>{T('description')}</Text>
-                <TextInput style={[s.mInput, s.mArea]} value={editCaption} onChangeText={setEditCaption} multiline textAlignVertical="top" />
+                {(editFocus === 'all' || editFocus === 'caption') ? (<>
+                  <Text style={s.mLabel}>{T('description')}</Text>
+                  <TextInput style={[s.mInput, s.mArea]} value={editCaption} onChangeText={setEditCaption} multiline textAlignVertical="top" />
+                </>) : null}
 
-                <Text style={s.mLabel}>{T('personal_notes')}</Text>
-                <TextInput style={[s.mInput, s.mArea]} value={editNotes} onChangeText={setEditNotes} multiline textAlignVertical="top" />
+                {(editFocus === 'all' || editFocus === 'ingredients') ? (<>
+                  <Text style={s.mLabel}>🍅 {T('ingredients')}</Text>
+                  <TextInput style={[s.mInput, s.mAreaBig]} value={editIngredients} onChangeText={setEditIngredients}
+                    multiline textAlignVertical="top" placeholder={T('ingredients_placeholder')} placeholderTextColor="#666" />
+                </>) : null}
 
-                {/* Difficulty */}
-                <Text style={s.mLabel}>{T('difficulty')}</Text>
-                <View style={s.diffRow}>
-                  {(['easy', 'medium', 'hard'] as Difficulty[]).map((d) => (
-                    <TouchableOpacity key={d} style={[s.diffChip, editDifficulty === d && { borderColor: difficultyColor(d), backgroundColor: difficultyColor(d) + '22' }]} onPress={() => setEditDifficulty(editDifficulty === d ? '' : d)}>
-                      <Text style={[s.diffText, editDifficulty === d && { color: difficultyColor(d), fontWeight: '700' }]}>{difficultyLabel(d)}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                {(editFocus === 'all' || editFocus === 'notes') ? (<>
+                  <Text style={s.mLabel}>{T('personal_notes')}</Text>
+                  <TextInput style={[s.mInput, s.mArea]} value={editNotes} onChangeText={setEditNotes} multiline textAlignVertical="top" />
+                </>) : null}
 
-                {/* Time row */}
-                <View style={s.timeRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.mLabel}>{T('prep_time')} ({T('minutes_short')})</Text>
-                    <TextInput style={s.mInput} value={editPrep} onChangeText={setEditPrep} keyboardType="number-pad" placeholder="0" placeholderTextColor="#666" />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.mLabel}>{T('cook_time')} ({T('minutes_short')})</Text>
-                    <TextInput style={s.mInput} value={editCook} onChangeText={setEditCook} keyboardType="number-pad" placeholder="0" placeholderTextColor="#666" />
-                  </View>
-                </View>
-
-                {/* Tags */}
-                <Text style={s.mLabel}>{T('tags')}</Text>
-                <View style={s.tagEditRow}>
-                  <TextInput style={[s.mInput, { flex: 1 }]} value={newTagInput} onChangeText={setNewTagInput}
-                    placeholder={T('add_tag')} placeholderTextColor="#666" onSubmitEditing={addTag} returnKeyType="done" />
-                  <TouchableOpacity style={s.addTagBtn} onPress={addTag}>
-                    <Ionicons name="add" size={22} color="#fff" />
-                  </TouchableOpacity>
-                </View>
-                {editTags.length > 0 ? (
-                  <View style={s.tagRow}>
-                    {editTags.map((t) => (
-                      <TouchableOpacity key={t} style={s.tagEdit} onPress={() => removeTag(t)}>
-                        <Text style={s.tagText}>#{t}</Text>
-                        <Ionicons name="close" size={14} color="#FF6B35" />
+                {editFocus === 'all' ? (<>
+                  <Text style={s.mLabel}>{T('difficulty')}</Text>
+                  <View style={s.diffRow}>
+                    {(['easy', 'medium', 'hard'] as Difficulty[]).map((d) => (
+                      <TouchableOpacity key={d} style={[s.diffChip, editDifficulty === d && { borderColor: difficultyColor(d), backgroundColor: difficultyColor(d) + '22' }]} onPress={() => setEditDifficulty(editDifficulty === d ? '' : d)}>
+                        <Text style={[s.diffText, editDifficulty === d && { color: difficultyColor(d), fontWeight: '700' }]}>{difficultyLabel(d)}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
-                ) : null}
 
-                {/* AI Recipe text */}
-                <Text style={s.mLabel}>{T('ai_recipe_text')}</Text>
-                <TextInput style={[s.mInput, s.mAreaBig]} value={editTranscription} onChangeText={setEditTranscription}
-                  multiline textAlignVertical="top" placeholder={T('ai_recipe_text_placeholder')} placeholderTextColor="#666" />
+                  <View style={s.timeRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.mLabel}>{T('prep_time')} ({T('minutes_short')})</Text>
+                      <TextInput style={s.mInput} value={editPrep} onChangeText={setEditPrep} keyboardType="number-pad" placeholder="0" placeholderTextColor="#666" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.mLabel}>{T('cook_time')} ({T('minutes_short')})</Text>
+                      <TextInput style={s.mInput} value={editCook} onChangeText={setEditCook} keyboardType="number-pad" placeholder="0" placeholderTextColor="#666" />
+                    </View>
+                  </View>
+
+                  <Text style={s.mLabel}>{T('tags')}</Text>
+                  <View style={s.tagEditRow}>
+                    <TextInput style={[s.mInput, { flex: 1 }]} value={newTagInput} onChangeText={setNewTagInput}
+                      placeholder={T('add_tag')} placeholderTextColor="#666" onSubmitEditing={addTag} returnKeyType="done" />
+                    <TouchableOpacity style={s.addTagBtn} onPress={addTag}>
+                      <Ionicons name="add" size={22} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                  {editTags.length > 0 ? (
+                    <View style={s.tagRow}>
+                      {editTags.map((t) => (
+                        <TouchableOpacity key={t} style={s.tagEdit} onPress={() => removeTag(t)}>
+                          <Text style={s.tagText}>#{t}</Text>
+                          <Ionicons name="close" size={14} color="#FF6B35" />
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  ) : null}
+                </>) : null}
+
+                {(editFocus === 'all' || editFocus === 'transcription') ? (<>
+                  <Text style={s.mLabel}>👨‍🍳 {T('procedure')}</Text>
+                  <TextInput style={[s.mInput, s.mAreaBig]} value={editTranscription} onChangeText={setEditTranscription}
+                    multiline textAlignVertical="top" placeholder={T('ai_recipe_text_placeholder')} placeholderTextColor="#666" />
+                </>) : null}
 
                 <TouchableOpacity style={[s.mSave, saving && s.disabled]} onPress={saveEdit} disabled={saving}>
                   {saving ? <ActivityIndicator color="#fff" /> : <><Ionicons name="checkmark" size={22} color="#fff" /><Text style={s.mSaveText}>{T('save')}</Text></>}
@@ -473,9 +528,10 @@ const s = StyleSheet.create({
   disabled: { opacity: 0.5 },
   card: { backgroundColor: '#1a1a1a', borderRadius: 12, padding: 14, marginHorizontal: 20, marginBottom: 10, borderWidth: 1, borderColor: '#2a2a2a' },
   cardH: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
-  cardT: { fontSize: 14, fontWeight: '600', color: '#aaa' },
+  cardT: { fontSize: 14, fontWeight: '600', color: '#aaa', flex: 1 },
   cardBody: { fontSize: 14, color: '#ddd', lineHeight: 22 },
   empty: { fontSize: 14, color: '#666', fontStyle: 'italic' },
+  editIcon: { padding: 4, backgroundColor: '#FF6B3520', borderRadius: 8 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   rowText: { fontSize: 14, color: '#FF6B35' },
   err: { fontSize: 14, color: '#FF4444', marginBottom: 8 },
@@ -485,7 +541,7 @@ const s = StyleSheet.create({
   aiBtnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
   mOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' },
   mKAV: { flex: 1, justifyContent: 'flex-end' },
-  mContent: { backgroundColor: '#1a1a1a', borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '90%', padding: 20 },
+  mContent: { backgroundColor: '#1a1a1a', borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '92%', padding: 20 },
   mHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   mTitle: { fontSize: 22, fontWeight: 'bold', color: '#fff' },
   mLabel: { fontSize: 13, fontWeight: '600', color: '#aaa', marginBottom: 6, marginTop: 12 },

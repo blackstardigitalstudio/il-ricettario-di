@@ -106,6 +106,7 @@ async def update_recipe(recipe_id: str, update: RecipeUpdate, request: Request):
         # When user manually edits the recipe, mark as done so the UI shows it
         if update.transcription.strip():
             data["transcription_status"] = "done"
+    if update.ingredients is not None: data["ingredients"] = update.ingredients
     if update.tags is not None: data["tags"] = update.tags
     if update.difficulty is not None: data["difficulty"] = update.difficulty
     if update.prep_time is not None: data["prep_time"] = update.prep_time

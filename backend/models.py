@@ -61,6 +61,7 @@ class Recipe(BaseModel):
     notes: str = ""
     transcription: str = ""
     transcription_status: str = "none"
+    ingredients: str = ""
     tags: List[str] = Field(default_factory=list)
     difficulty: str = ""  # "easy" | "medium" | "hard" | ""
     prep_time: int = 0  # minutes
@@ -88,6 +89,7 @@ class RecipeUpdate(BaseModel):
     caption: Optional[str] = None
     notes: Optional[str] = None
     transcription: Optional[str] = None
+    ingredients: Optional[str] = None
     tags: Optional[List[str]] = None
     difficulty: Optional[str] = None
     prep_time: Optional[int] = None

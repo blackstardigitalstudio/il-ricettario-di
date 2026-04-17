@@ -10,7 +10,12 @@ from services.scraping import extract_real_media
 
 
 async def do_ai_recipe_generation(recipe_id: str, recipe: dict):
-    """Generate a full recipe (ingredients, steps) via Gemini multimodal."""
+    """Generate a full recipe (ingredients, steps) via Gemini multimodal.
+
+    Produces TWO outputs:
+      - `ingredients`: a clean bulleted list of ingredients (string)
+      - `transcription`: step-by-step procedure + tips + servings (string)
+    """
     try:
         from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
 
@@ -19,8 +24,10 @@ async def do_ai_recipe_generation(recipe_id: str, recipe: dict):
             session_id=f"recipe-{recipe_id}-{uuid.uuid4().hex[:6]}",
             system_message=(
                 "Sei un esperto chef italiano. Analizza l'immagine (se fornita) e la descrizione "
-                "per generare una ricetta dettagliata e realistica in italiano. Se non hai abbastanza info, "
-                "usa la tua conoscenza culinaria. Rispondi SOLO con la ricetta."
+                "per generare una ricetta dettagliata e realistica in italiano. Rispondi SOLO in formato JSON valido "
+                "con due chiavi: \"ingredients\" (lista testuale con trattini per ciascun ingrediente e quantità) "
+                "e \"steps\" (procedimento numerato dettagliato + tempi + consigli dello chef + porzioni). "
+                "Niente testo fuori dal JSON."
             ),
         ).with_model("gemini", "gemini-2.5-flash")
 
@@ -33,24 +40,14 @@ async def do_ai_recipe_generation(recipe_id: str, recipe: dict):
             parts.append(f"Note utente: {recipe['notes']}")
         context = "\n".join(parts) or "Ricetta italiana"
 
-        prompt = f"""Analizza questa ricetta (e l'immagine se fornita) e genera la ricetta completa:
-
-{context}
-
-Formato richiesto:
-🍽️ NOME DEL PIATTO
-
-📝 INGREDIENTI:
-- (lista completa con quantità precise)
-
-👨‍🍳 PROCEDIMENTO:
-1. (passo dettagliato)
-2. ...
-
-⏱️ TEMPO DI PREPARAZIONE:
-🔥 TEMPO DI COTTURA:
-👥 PORZIONI:
-💡 CONSIGLI DELLO CHEF:"""
+        prompt = (
+            "Genera la ricetta completa in italiano. Rispondi ESCLUSIVAMENTE con un oggetto JSON valido nella forma:\n"
+            "{\n"
+            '  "ingredients": "- 200 g di farina\\n- 2 uova\\n- ...",\n'
+            '  "steps": "1. Primo passo dettagliato\\n2. ...\\n\\n⏱️ Tempo prep: 15 min\\n🔥 Tempo cottura: 20 min\\n👥 Porzioni: 4\\n💡 Consigli: ..."\n'
+            "}\n"
+            "Contesto:\n" + context
+        )
 
         msg_content: list = [prompt]
         try:
@@ -68,10 +65,34 @@ Formato richiesto:
             response = await chat.send_message(UserMessage(text=prompt))
 
         text = str(response) if response else ""
-        status = "done" if len(text) > 20 else "error"
+        ingredients = ""
+        steps = text
+        # Try to parse JSON (possibly wrapped in markdown fences)
+        try:
+            import json, re
+            cleaned = text.strip()
+            # Strip ```json ... ``` fences if present
+            m = re.search(r"```(?:json)?\s*(\{.*\})\s*```", cleaned, re.DOTALL)
+            if m:
+                cleaned = m.group(1)
+            # Take the first {...} block
+            m2 = re.search(r"\{.*\}", cleaned, re.DOTALL)
+            if m2:
+                cleaned = m2.group(0)
+            parsed = json.loads(cleaned)
+            ingredients = str(parsed.get("ingredients", "")).strip()
+            steps = str(parsed.get("steps", "")).strip() or text
+        except Exception as parse_err:
+            logger.warning(f"AI JSON parse failed, using raw text: {parse_err}")
+
+        status = "done" if (steps or ingredients) and len(text) > 20 else "error"
         await db.recipes.update_one(
             {"id": recipe_id},
-            {"$set": {"transcription_status": status, "transcription": text or "Errore"}},
+            {"$set": {
+                "transcription_status": status,
+                "transcription": steps or "Errore",
+                "ingredients": ingredients,
+            }},
         )
     except Exception as e:
         logger.error(f"AI error {recipe_id}: {e}")
