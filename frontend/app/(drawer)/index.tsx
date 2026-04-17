@@ -256,7 +256,7 @@ export default function HomeScreen() {
                       color={getPlatformColor(r.platform)}
                     />
                     <Text style={st.randomDate}>
-                      {new Date(r.created_at).toLocaleDateString('it-IT')}
+                      {new Date(r.created_at).toLocaleDateString(undefined)}
                     </Text>
                   </View>
                 </TouchableOpacity>
@@ -318,7 +318,7 @@ export default function HomeScreen() {
                 </Text>
                 <View style={st.recipeFooter}>
                   <Text style={st.recipeDate}>
-                    {new Date(recipe.created_at).toLocaleDateString('it-IT')}
+                    {new Date(recipe.created_at).toLocaleDateString(undefined)}
                   </Text>
                   {recipe.transcription_status === 'done' ? (
                     <View style={st.aiBadge}>

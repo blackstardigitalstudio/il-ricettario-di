@@ -116,7 +116,16 @@ function CustomDrawerContent(props: any) {
 
       {menuItems.map((item) => (
         <TouchableOpacity key={item.key} style={ds.menuItem}
-          onPress={() => { props.navigation.closeDrawer(); router.push(`/(drawer)/${item.key}`); }}
+          onPress={() => {
+            // Use drawer navigation (no stacking). Closes drawer automatically.
+            try {
+              props.navigation.navigate(item.key);
+            } catch (e) {
+              // Fallback if not in drawer context (e.g., navigated from detail screen)
+              props.navigation.closeDrawer();
+              setTimeout(() => router.replace('/(drawer)'), 50);
+            }
+          }}
           testID={`drawer-${item.key}`}>
           <View style={[ds.iconCircle, { backgroundColor: item.color + '20' }]}>
             <Ionicons name={item.icon as any} size={22} color={item.color} />
