@@ -107,6 +107,81 @@ def extract_frame_from_video_url(video_url: str) -> Optional[bytes]:
         return None
 
 
+def _probe_duration(video_path: str) -> float:
+    """Return duration of a local video file in seconds (ffprobe)."""
+    try:
+        r = subprocess.run(
+            ['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+             '-of', 'default=noprint_wrappers=1:nokey=1', video_path],
+            capture_output=True, timeout=10, text=True,
+        )
+        return float(r.stdout.strip()) if r.stdout.strip() else 0.0
+    except Exception:
+        return 0.0
+
+
+def extract_multiple_frames_from_local(video_path: str, count: int = 6) -> list:
+    """Extract N frames evenly spaced from a local video file.
+
+    Returns list of dicts: [{'bytes': bytes, 'timestamp': float}].
+    """
+    frames: list = []
+    duration = _probe_duration(video_path)
+    if duration <= 0:
+        return frames
+    # Skip the very beginning and end (often black frames / logo)
+    start = max(0.8, duration * 0.08)
+    end = max(start + 1, duration * 0.92)
+    if count <= 1:
+        timestamps = [duration / 2]
+    else:
+        step = (end - start) / (count - 1)
+        timestamps = [start + i * step for i in range(count)]
+    for ts in timestamps:
+        try:
+            with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp_img:
+                img_path = tmp_img.name
+            subprocess.run(
+                ['ffmpeg', '-ss', f"{ts:.2f}", '-i', video_path, '-vframes', '1',
+                 '-q:v', '3', '-y', img_path],
+                capture_output=True, timeout=20,
+            )
+            if os.path.exists(img_path) and os.path.getsize(img_path) > 1000:
+                with open(img_path, 'rb') as f:
+                    frames.append({'bytes': f.read(), 'timestamp': round(ts, 1)})
+            try: os.unlink(img_path)
+            except Exception: pass
+        except Exception as fe:
+            logger.warning(f"multi-frame err at {ts}: {fe}")
+    return frames
+
+
+def extract_multiple_frames_from_url(video_url: str, count: int = 6) -> list:
+    """Download the video to a temp file then extract N frames spread across duration."""
+    try:
+        with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as tmp_vid:
+            vid_path = tmp_vid.name
+        with httpx.Client(timeout=120, follow_redirects=True) as c:
+            with c.stream('GET', video_url, headers={'User-Agent': 'Mozilla/5.0'}) as resp:
+                if resp.status_code != 200:
+                    return []
+                written = 0
+                max_bytes = 40 * 1024 * 1024  # 40MB cap for multi-frame
+                with open(vid_path, 'wb') as f:
+                    for chunk in resp.iter_bytes(chunk_size=65536):
+                        f.write(chunk)
+                        written += len(chunk)
+                        if written >= max_bytes:
+                            break
+        frames = extract_multiple_frames_from_local(vid_path, count=count)
+        try: os.unlink(vid_path)
+        except Exception: pass
+        return frames
+    except Exception as e:
+        logger.warning(f"multi-frame url err: {e}")
+        return []
+
+
 def generate_thumbnail_from_url(source_url: str, output_path: str) -> bool:
     """Full yt-dlp download + ffmpeg frame extraction (used by on-demand endpoint)."""
     try:

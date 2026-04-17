@@ -62,6 +62,7 @@ class Recipe(BaseModel):
     transcription: str = ""
     transcription_status: str = "none"
     ingredients: str = ""
+    ingredients_status: str = "none"  # "none" | "pending" | "done" | "error"
     tags: List[str] = Field(default_factory=list)
     difficulty: str = ""  # "easy" | "medium" | "hard" | ""
     prep_time: int = 0  # minutes

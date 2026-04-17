@@ -148,6 +148,9 @@ const translations: { [lang in LangCode]: Translations } = {
     download_hint_webview: 'Carica la ricetta sul sito qui sotto e tocca il suo pulsante download',
     open_in_browser: 'Apri nel browser',
     try_web_downloader: 'Prova con il downloader web',
+    analyze_video_ingredients: 'Analizza video per ingredienti',
+    reanalyze_video: 'Rianalizza video',
+    analyzing_video: 'Analisi video in corso... (6 fotogrammi)',
   },
   en: {
     welcome: 'Welcome!',
@@ -281,6 +284,9 @@ const translations: { [lang in LangCode]: Translations } = {
     download_hint_webview: 'Load the recipe on the site below and tap its download button',
     open_in_browser: 'Open in browser',
     try_web_downloader: 'Try web downloader',
+    analyze_video_ingredients: 'Analyze video for ingredients',
+    reanalyze_video: 'Re-analyze video',
+    analyzing_video: 'Analyzing video... (6 frames)',
   },
   es: {
     welcome: '¡Bienvenido!', whats_your_name: '¿Cómo te llamas?', enter_name: 'Tu nombre...', cookbook_of: 'El Recetario de', start: 'Empezar',

@@ -18,7 +18,7 @@ interface Recipe {
   id: string; name: string; source_url: string; platform: string;
   caption: string; thumbnail_url: string; notes: string;
   transcription: string; transcription_status: string; created_at: string;
-  ingredients?: string;
+  ingredients?: string; ingredients_status?: string;
   tags?: string[]; difficulty?: string; prep_time?: number; cook_time?: number;
   is_favorite?: boolean;
 }
@@ -73,7 +73,9 @@ export default function RecipeDetailScreen() {
         if (res.ok) {
           const data = await res.json();
           setRecipe(data);
-          if (data.transcription_status !== 'pending') { clearInterval(timer); setTranscribing(false); }
+          const transcDone = data.transcription_status !== 'pending';
+          const ingrDone = data.ingredients_status !== 'pending';
+          if (transcDone && ingrDone) { clearInterval(timer); setTranscribing(false); }
         }
       } catch (e) { /* */ }
     }, 3000);
@@ -87,6 +89,17 @@ export default function RecipeDetailScreen() {
       const res = await authFetch(`/api/recipes/${recipe.id}/generate-recipe`, { method: 'POST' });
       if (res.ok) { startPolling(); } else { setTranscribing(false); }
     } catch (e) { setTranscribing(false); }
+  };
+
+  const analyzeVideoForIngredients = async () => {
+    if (!recipe) return;
+    // Optimistic UI: mark pending
+    setRecipe({ ...recipe, ingredients_status: 'pending' });
+    try {
+      const res = await authFetch(`/api/recipes/${recipe.id}/extract-ingredients`, { method: 'POST' });
+      if (res.ok) { startPolling(); }
+      else { setRecipe({ ...recipe, ingredients_status: 'error' }); }
+    } catch (e) { setRecipe({ ...recipe, ingredients_status: 'error' }); }
   };
 
   const toggleFavorite = async () => {
@@ -369,14 +382,33 @@ export default function RecipeDetailScreen() {
           {recipe.caption ? <Text style={s.cardBody}>{recipe.caption}</Text> : <Text style={s.empty}>{T('tap_pencil_to_add')}</Text>}
         </View>
 
-        {/* Ingredients (editable) */}
+        {/* Ingredients (editable + AI video analysis) */}
         <View style={s.card}>
           <View style={s.cardH}>
             <Ionicons name="list" size={16} color="#4CAF50" />
             <Text style={s.cardT}>🍅 {T('ingredients')}</Text>
             <EditIcon focus="ingredients" />
           </View>
-          {recipe.ingredients ? <Text style={s.cardBody}>{recipe.ingredients}</Text> : <Text style={s.empty}>{T('tap_pencil_to_add')}</Text>}
+          {recipe.ingredients_status === 'pending' ? (
+            <View style={s.row}>
+              <ActivityIndicator size="small" color="#4CAF50" />
+              <Text style={[s.rowText, { color: '#4CAF50' }]}>{T('analyzing_video')}</Text>
+            </View>
+          ) : recipe.ingredients ? (
+            <>
+              <Text style={s.cardBody}>{recipe.ingredients}</Text>
+              <TouchableOpacity style={[s.aiBtn, { backgroundColor: '#2E7D32', marginTop: 10 }]} onPress={analyzeVideoForIngredients}>
+                <Ionicons name="scan" size={16} color="#fff" /><Text style={s.aiBtnText}>🔍 {T('reanalyze_video')}</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <Text style={s.empty}>{T('tap_pencil_to_add')}</Text>
+              <TouchableOpacity style={[s.aiBtn, { backgroundColor: '#2E7D32', marginTop: 10 }]} onPress={analyzeVideoForIngredients}>
+                <Ionicons name="scan" size={16} color="#fff" /><Text style={s.aiBtnText}>🔍 {T('analyze_video_ingredients')}</Text>
+              </TouchableOpacity>
+            </>
+          )}
         </View>
 
         {/* Notes (editable) */}

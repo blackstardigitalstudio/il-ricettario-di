@@ -9,7 +9,7 @@ from config import executor
 from db import db, get_current_user
 from models import Recipe, RecipeCreate, RecipeUpdate
 from services.video import detect_platform, extract_video_info
-from services.ai import do_ai_recipe_generation, auto_generate_title_and_cover, compress_old_videos
+from services.ai import do_ai_recipe_generation, auto_generate_title_and_cover, compress_old_videos, extract_ingredients_from_video
 
 router = APIRouter()
 
@@ -140,3 +140,15 @@ async def generate_recipe(recipe_id: str, request: Request):
     await db.recipes.update_one({"id": recipe_id}, {"$set": {"transcription_status": "pending"}})
     asyncio.create_task(do_ai_recipe_generation(recipe_id, recipe))
     return {"message": "Generazione avviata", "status": "pending"}
+
+
+@router.post("/recipes/{recipe_id}/extract-ingredients")
+async def extract_ingredients(recipe_id: str, request: Request):
+    """Run dedicated multi-frame video analysis to extract ingredients only."""
+    user = await get_current_user(request)
+    recipe = await db.recipes.find_one({"id": recipe_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Ricetta non trovata")
+    await db.recipes.update_one({"id": recipe_id}, {"$set": {"ingredients_status": "pending"}})
+    asyncio.create_task(extract_ingredients_from_video(recipe_id, recipe))
+    return {"message": "Analisi video avviata", "status": "pending"}
