@@ -184,6 +184,16 @@ async def auto_generate_title_and_cover(recipe_id: str, current_name: str, capti
         if ai_title and 2 < len(ai_title) < 60:
             await db.recipes.update_one({"id": recipe_id}, {"$set": {"name": ai_title}})
             logger.info(f"Auto-title for {recipe_id}: {ai_title}")
+
+        # Now that caption + thumbnail + video_url are populated, auto-extract ingredients
+        # from the video frames. This runs in the same background task sequentially so the
+        # user sees them appear automatically without needing to press the button.
+        try:
+            refreshed = await db.recipes.find_one({"id": recipe_id}, {"_id": 0})
+            if refreshed and not (refreshed.get("ingredients") or "").strip():
+                await extract_ingredients_from_video(recipe_id, refreshed)
+        except Exception as ing_err:
+            logger.warning(f"Auto-ingredients err for {recipe_id}: {ing_err}")
     except Exception as e:
         logger.error(f"Auto-generate error for {recipe_id}: {e}")
 
@@ -198,6 +208,17 @@ async def extract_ingredients_from_video(recipe_id: str, recipe: dict):
         from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
 
         frames = await _get_video_frames(recipe, count=6)
+        used_cover_fallback = False
+        if not frames:
+            # Fallback: use the cover thumbnail (single frame is better than nothing)
+            thumb = recipe.get("thumbnail_url", "")
+            if thumb and thumb.startswith("data:image"):
+                try:
+                    header, b64data = thumb.split(",", 1)
+                    frames = [{"bytes": base64.b64decode(b64data), "timestamp": 0}]
+                    used_cover_fallback = True
+                except Exception:
+                    pass
         if not frames:
             logger.warning(f"ingredients: no frames extractable for {recipe_id}")
             await db.recipes.update_one(
