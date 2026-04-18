@@ -30,6 +30,24 @@
         "ACCESS_NETWORK_STATE",
         "WRITE_EXTERNAL_STORAGE",
         "READ_EXTERNAL_STORAGE"
+      ],
+      "intentFilters": [
+        {
+          "action": "SEND",
+          "category": ["DEFAULT"],
+          "data": [{ "mimeType": "text/plain" }]
+        },
+        {
+          "action": "VIEW",
+          "category": ["DEFAULT", "BROWSABLE"],
+          "data": [
+            { "scheme": "https", "host": "www.instagram.com" },
+            { "scheme": "https", "host": "instagram.com" },
+            { "scheme": "https", "host": "www.facebook.com" },
+            { "scheme": "https", "host": "facebook.com" },
+            { "scheme": "https", "host": "fb.watch" }
+          ]
+        }
       ]
     },
     "web": {
