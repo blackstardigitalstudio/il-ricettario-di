@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl,
   Image, ActivityIndicator, Alert, TextInput,
@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { DrawerActions } from '@react-navigation/native';
 import { useNavigation } from 'expo-router';
+import * as Clipboard from 'expo-clipboard';
 import { authFetch } from '../../src/utils/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLang } from '../../src/context/LangContext';
@@ -95,8 +96,34 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       loadAll(searchQuery);
+      checkClipboardForRecipeLink();
     }, [])
   );
+
+  // When the app comes back to foreground, check the clipboard for IG/FB URLs
+  // and offer to save them as a new recipe. This is the pragmatic alternative
+  // to reading the Android SEND intent extra text.
+  const checkClipboardForRecipeLink = async () => {
+    try {
+      const lastHandled = await AsyncStorage.getItem('clipboard_last_handled');
+      const clip = await Clipboard.getStringAsync();
+      if (!clip || clip === lastHandled) return;
+      const m = clip.match(/https?:\/\/(?:www\.)?(?:instagram\.com|instagr\.am|facebook\.com|fb\.com|fb\.watch)\/[^\s]+/i);
+      if (!m) return;
+      const url = m[0];
+      Alert.alert(
+        T('add_from_clipboard_title') || 'Link rilevato',
+        `${T('add_from_clipboard_msg') || 'Vuoi salvare questo link come nuova ricetta?'}\n\n${url}`,
+        [
+          { text: T('cancel'), style: 'cancel', onPress: () => AsyncStorage.setItem('clipboard_last_handled', clip) },
+          { text: T('add') || 'Aggiungi', onPress: async () => {
+            await AsyncStorage.setItem('clipboard_last_handled', clip);
+            router.push({ pathname: '/(drawer)/add', params: { prefillUrl: url } });
+          }},
+        ],
+      );
+    } catch (e) { /* ignore */ }
+  };
 
   const onRefresh = () => {
     setRefreshing(true);

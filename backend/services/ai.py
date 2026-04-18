@@ -65,6 +65,7 @@ async def do_ai_recipe_generation(recipe_id: str, recipe: dict):
         )
 
         msg_content: list = [prompt]
+        file_contents: list = []
         # Attach multiple video frames (multi-frame analysis) for better recipe detection
         try:
             frames = await _get_video_frames(recipe, count=6)
@@ -72,19 +73,18 @@ async def do_ai_recipe_generation(recipe_id: str, recipe: dict):
                 logger.info(f"Multi-frame: using {len(frames)} frames for AI recipe gen {recipe_id}")
                 for fr in frames:
                     b64 = base64.b64encode(fr['bytes']).decode('utf-8')
-                    msg_content.append(ImageContent(image_base64=b64, mime_type='image/jpeg'))
+                    file_contents.append(ImageContent(image_base64=b64))
             else:
                 # Fallback: use cover thumbnail if no video frames available
                 thumb = recipe.get("thumbnail_url", "")
                 if thumb and thumb.startswith("data:image"):
                     header, b64data = thumb.split(",", 1)
-                    mime = header.split(";")[0].replace("data:", "")
-                    msg_content.append(ImageContent(image_base64=b64data, mime_type=mime))
+                    file_contents.append(ImageContent(image_base64=b64data))
         except Exception as img_err:
             logger.warning(f"AI image attach err: {img_err}")
 
-        if len(msg_content) > 1:
-            response = await chat.send_message(UserMessage(content=msg_content))
+        if file_contents:
+            response = await chat.send_message(UserMessage(text=prompt, file_contents=file_contents))
         else:
             response = await chat.send_message(UserMessage(text=prompt))
 
@@ -207,6 +207,12 @@ async def extract_ingredients_from_video(recipe_id: str, recipe: dict):
     try:
         from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
 
+        # Always re-fetch the latest version of the recipe so we have the newly
+        # populated thumbnail_url / video_url / caption.
+        fresh = await db.recipes.find_one({"id": recipe_id}, {"_id": 0})
+        if fresh:
+            recipe = fresh
+
         frames = await _get_video_frames(recipe, count=6)
         used_cover_fallback = False
         if not frames:
@@ -257,15 +263,15 @@ async def extract_ingredients_from_video(recipe_id: str, recipe: dict):
             "...\n\n"
             f"Contesto:\n{context}"
         )
-        msg_content: list = [prompt]
-        for fr in frames:
-            b64 = base64.b64encode(fr['bytes']).decode('utf-8')
-            msg_content.append(ImageContent(image_base64=b64, mime_type='image/jpeg'))
-
         logger.info(f"ingredients: analyzing {len(frames)} frames for {recipe_id}")
         await db.recipes.update_one({"id": recipe_id}, {"$set": {"ingredients_status": "pending"}})
 
-        response = await chat.send_message(UserMessage(content=msg_content))
+        file_contents = []
+        for fr in frames:
+            b64 = base64.b64encode(fr['bytes']).decode('utf-8')
+            file_contents.append(ImageContent(image_base64=b64))
+
+        response = await chat.send_message(UserMessage(text=prompt, file_contents=file_contents))
         text = str(response).strip() if response else ""
 
         if text and len(text) > 5:

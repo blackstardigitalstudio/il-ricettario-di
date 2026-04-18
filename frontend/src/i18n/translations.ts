@@ -176,6 +176,8 @@ const translations: { [lang in LangCode]: Translations } = {
     folders_label: 'cartelle',
     subfolders_label: 'sottocartelle',
     web_login_hint: 'Apri il browser per accedere con Google.',
+    add_from_clipboard_title: 'Link rilevato',
+    add_from_clipboard_msg: 'Vuoi salvare questo link come nuova ricetta?',
   },
   en: {
     welcome: 'Welcome!',
@@ -337,6 +339,8 @@ const translations: { [lang in LangCode]: Translations } = {
     folders_label: 'folders',
     subfolders_label: 'subfolders',
     web_login_hint: 'Open the browser to sign in with Google.',
+    add_from_clipboard_title: 'Link detected',
+    add_from_clipboard_msg: 'Do you want to save this link as a new recipe?',
   },
   es: {
     welcome: '¡Bienvenido!', whats_your_name: '¿Cómo te llamas?', enter_name: 'Tu nombre...', cookbook_of: 'El Recetario de', start: 'Empezar',

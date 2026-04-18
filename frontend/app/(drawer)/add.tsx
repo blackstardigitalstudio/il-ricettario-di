@@ -7,7 +7,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useNavigation, DrawerActions } from '@react-navigation/native';
 import * as Clipboard from 'expo-clipboard';
 
@@ -18,7 +18,8 @@ export default function AddRecipeScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const { T } = useLang();
-  const [url, setUrl] = useState('');
+  const { prefillUrl } = useLocalSearchParams<{ prefillUrl?: string }>();
+  const [url, setUrl] = useState(typeof prefillUrl === 'string' ? prefillUrl : '');
   const [manualCaption, setManualCaption] = useState('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
