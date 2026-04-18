@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert,
-  Switch, Platform, ActivityIndicator, Image, Modal,
+  Switch, Platform, ActivityIndicator, Image, Modal, Share,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useNavigation } from 'expo-router';
 import { DrawerActions } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import * as DocumentPicker from 'expo-document-picker';
 import { authFetch } from '../../src/utils/api';
 import { useLang, LANGUAGES } from '../../src/context/LangContext';
 import { useTheme } from '../../src/context/ThemeContext';
@@ -19,12 +22,11 @@ export default function SettingsScreen() {
   const { mode, colors, toggle } = useTheme();
 
   const [userName, setUserName] = useState('');
-  const [userEmail, setUserEmail] = useState('');
-  const [userPicture, setUserPicture] = useState('');
   const [editingName, setEditingName] = useState(false);
   const [tempName, setTempName] = useState('');
-  const [loggingOut, setLoggingOut] = useState(false);
   const [showLangPicker, setShowLangPicker] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   const currentLang = LANGUAGES.find((l) => l.code === lang) || LANGUAGES[0];
 
@@ -34,13 +36,6 @@ export default function SettingsScreen() {
     try {
       const localName = await AsyncStorage.getItem('user_name');
       if (localName) { setUserName(localName); setTempName(localName); }
-      const stored = await AsyncStorage.getItem('user_data');
-      if (stored) {
-        const data = JSON.parse(stored);
-        if (data.name) { setUserName(data.name); setTempName(data.name); }
-        setUserEmail(data.email || '');
-        setUserPicture(data.picture || '');
-      }
     } catch (e) { /* */ }
   };
 
@@ -50,37 +45,122 @@ export default function SettingsScreen() {
     try {
       await AsyncStorage.setItem('user_name', val);
       try { await authFetch('/api/auth/profile', { method: 'PUT', body: JSON.stringify({ name: val }) }); } catch (e) { /* */ }
-      const stored = await AsyncStorage.getItem('user_data');
-      if (stored) {
-        const d = JSON.parse(stored); d.name = val;
-        await AsyncStorage.setItem('user_data', JSON.stringify(d));
-      }
       setUserName(val);
       setEditingName(false);
     } catch (e) { /* */ }
   };
 
-  const handleGoogleLogin = () => {
-    router.push('/google-login');
+  const exportBackup = async () => {
+    setExporting(true);
+    try {
+      const res = await authFetch('/api/backup/export');
+      if (!res.ok) {
+        Alert.alert(T('error'), T('backup_export_failed') || 'Esportazione fallita');
+        return;
+      }
+      const data = await res.json();
+      const totals = data.totals || {};
+      const json = JSON.stringify(data, null, 2);
+      const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const fname = `ricettario-backup-${ts}.json`;
+
+      if (Platform.OS === 'web') {
+        // Fallback for web: trigger browser download
+        try {
+          const blob = new Blob([json], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = fname;
+          a.click();
+          URL.revokeObjectURL(url);
+          Alert.alert(T('done') || 'Fatto', `${totals.recipes || 0} ricette esportate`);
+        } catch (e) { /* */ }
+        return;
+      }
+
+      const path = `${FileSystem.cacheDirectory}${fname}`;
+      await FileSystem.writeAsStringAsync(path, json, { encoding: FileSystem.EncodingType.UTF8 });
+      const canShare = await Sharing.isAvailableAsync();
+      const msg = `📦 ${T('backup_label') || 'Backup Ricettario'}\n` +
+                  `${T('recipes_label') || 'Ricette'}: ${totals.recipes || 0} • ` +
+                  `${T('folders_label') || 'Cartelle'}: ${totals.folders || 0}`;
+      if (canShare) {
+        await Sharing.shareAsync(path, {
+          mimeType: 'application/json',
+          dialogTitle: T('backup_share_title') || 'Condividi backup',
+          UTI: 'public.json',
+        });
+      } else {
+        // Fallback: open native Share sheet with text only (still works on WhatsApp as link-less message)
+        await Share.share({ message: `${msg}\n\n${json.substring(0, 1000)}…` });
+      }
+    } catch (e: any) {
+      Alert.alert(T('error'), e?.message || 'Export failed');
+    } finally {
+      setExporting(false);
+    }
   };
 
-  const handleLogout = () => {
-    Alert.alert(T('logout'), T('logout_confirm'), [
-      { text: T('cancel'), style: 'cancel' },
-      {
-        text: T('logout'), style: 'destructive',
-        onPress: async () => {
-          setLoggingOut(true);
-          try { await authFetch('/api/auth/logout', { method: 'POST' }); } catch (e) { /* */ }
-          await AsyncStorage.removeItem('session_token');
-          await AsyncStorage.removeItem('user_data');
-          setUserEmail('');
-          setUserPicture('');
-          setLoggingOut(false);
-          if (typeof window !== 'undefined' && (window as any).location) (window as any).location.reload();
-        },
-      },
-    ]);
+  const importBackup = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/json', 'text/plain', '*/*'],
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+      if (result.canceled || !result.assets || result.assets.length === 0) return;
+
+      const asset = result.assets[0];
+      const uri = asset.uri;
+
+      Alert.alert(
+        T('backup_import_title') || 'Importa backup',
+        T('backup_import_msg') || 'Come vuoi importare?\n\n• Unisci: aggiunge solo le voci nuove\n• Sostituisci: cancella tutto e reimporta',
+        [
+          { text: T('cancel'), style: 'cancel' },
+          { text: T('backup_merge') || 'Unisci', onPress: () => runImport(uri, 'merge') },
+          { text: T('backup_replace') || 'Sostituisci', style: 'destructive', onPress: () => runImport(uri, 'replace') },
+        ],
+      );
+    } catch (e: any) {
+      Alert.alert(T('error'), e?.message || 'Import failed');
+    }
+  };
+
+  const runImport = async (uri: string, mode: 'merge' | 'replace') => {
+    setImporting(true);
+    try {
+      const content = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.UTF8 });
+      let data: any;
+      try { data = JSON.parse(content); } catch {
+        Alert.alert(T('error'), T('backup_invalid_json') || 'File JSON non valido');
+        return;
+      }
+      const res = await authFetch('/api/backup/import', {
+        method: 'POST',
+        body: JSON.stringify({ data, mode }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        Alert.alert(T('error'), err?.detail || (T('backup_import_failed') || 'Importazione fallita'));
+        return;
+      }
+      const out = await res.json();
+      const imp = out.imported || {};
+      Alert.alert(
+        T('backup_import_done') || 'Importazione completata',
+        `✓ ${imp.recipes || 0} ${T('recipes_label') || 'ricette'}\n` +
+        `✓ ${imp.folders || 0} ${T('folders_label') || 'cartelle'}\n` +
+        `✓ ${imp.subfolders || 0} ${T('subfolders_label') || 'sottocartelle'}\n` +
+        (imp.skipped ? `⊘ ${imp.skipped} ${T('backup_skipped') || 'già presenti'}` : ''),
+        [{ text: 'OK' }],
+      );
+    } catch (e: any) {
+      Alert.alert(T('error'), e?.message || 'Import failed');
+    } finally {
+      setImporting(false);
+    }
   };
 
   const openDrawer = () => { try { navigation.dispatch(DrawerActions.openDrawer()); } catch (e) { /* */ } };
@@ -115,7 +195,7 @@ export default function SettingsScreen() {
     cancelText: { color: colors.textMuted, fontSize: 14, fontWeight: '500' },
   });
 
-  const isLoggedIn = !!userEmail;
+  const isLoggedIn = false;
 
   return (
     <SafeAreaView style={s.container}>
@@ -131,14 +211,9 @@ export default function SettingsScreen() {
         <Text style={s.sectionTitle}>{T('profile')}</Text>
         <View style={s.card}>
           <View style={s.profileRow}>
-            {userPicture ? (
-              <Image source={{ uri: userPicture }} style={s.avatar} />
-            ) : (
-              <View style={s.avatarPlaceholder}><Ionicons name="person" size={28} color={colors.accent} /></View>
-            )}
+            <View style={s.avatarPlaceholder}><Ionicons name="person" size={28} color={colors.accent} /></View>
             <View style={{ flex: 1 }}>
               <Text style={s.profileName}>{userName || T('user')}</Text>
-              {userEmail ? <Text style={s.profileEmail}>{userEmail}</Text> : <Text style={s.profileEmail}>{T('not_logged_in')}</Text>}
             </View>
           </View>
 
@@ -167,23 +242,42 @@ export default function SettingsScreen() {
           )}
         </View>
 
-        {/* ACCOUNT */}
-        <Text style={s.sectionTitle}>{T('account')}</Text>
+        {/* BACKUP */}
+        <Text style={s.sectionTitle}>💾 {T('backup') || 'Backup'}</Text>
         <View style={s.card}>
-          {!isLoggedIn ? (
-            <TouchableOpacity style={[s.actionBtn, s.googleBtn]} onPress={handleGoogleLogin} testID="google-login-btn">
-              <Ionicons name="logo-google" size={20} color="#4285F4" />
-              <Text style={s.googleText}>{T('login_with_google')}</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity style={[s.actionBtn, s.logoutBtn]} onPress={handleLogout} disabled={loggingOut} testID="logout-btn">
-              {loggingOut ? <ActivityIndicator size="small" color={colors.danger} /> : <Ionicons name="log-out-outline" size={20} color={colors.danger} />}
-              <Text style={s.logoutText}>{T('logout')}</Text>
-            </TouchableOpacity>
-          )}
-          <Text style={[s.rowSub, { textAlign: 'center', marginTop: 10 }]}>
-            {isLoggedIn ? T('logged_in_sync_hint') : T('login_hint')}
+          <Text style={[s.rowSub, { marginBottom: 12, lineHeight: 18 }]}>
+            {T('backup_hint') || "Esporta il tuo ricettario in un file JSON per conservarlo al sicuro o trasferirlo su un altro dispositivo. Puoi inviarlo tramite WhatsApp, email o salvarlo nel cloud."}
           </Text>
+          <TouchableOpacity
+            style={[s.actionBtn, { backgroundColor: colors.accent, marginBottom: 8 }]}
+            onPress={exportBackup}
+            disabled={exporting}
+            testID="backup-export-btn"
+          >
+            {exporting ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Ionicons name="cloud-download-outline" size={20} color="#fff" />
+            )}
+            <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600' }}>
+              {exporting ? (T('backup_exporting') || 'Esportazione...') : (T('backup_export') || 'Esporta Backup')}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[s.actionBtn, { backgroundColor: colors.accentSoft }]}
+            onPress={importBackup}
+            disabled={importing}
+            testID="backup-import-btn"
+          >
+            {importing ? (
+              <ActivityIndicator color={colors.accent} size="small" />
+            ) : (
+              <Ionicons name="cloud-upload-outline" size={20} color={colors.accent} />
+            )}
+            <Text style={{ color: colors.accent, fontSize: 15, fontWeight: '600' }}>
+              {importing ? (T('backup_importing') || 'Importazione...') : (T('backup_import') || 'Importa Backup')}
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* APPEARANCE */}

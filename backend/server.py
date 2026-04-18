@@ -7,7 +7,7 @@ from fastapi import FastAPI, APIRouter
 from starlette.middleware.cors import CORSMiddleware
 
 from db import client
-from routes import auth, extract, folders, subfolders, recipes, videos, instagram, shopping
+from routes import auth, extract, folders, subfolders, recipes, videos, instagram, shopping, backup
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
@@ -21,6 +21,7 @@ api_router.include_router(recipes.router)
 api_router.include_router(videos.router)
 api_router.include_router(instagram.router)
 api_router.include_router(shopping.router)
+api_router.include_router(backup.router)
 
 app.include_router(api_router)
 
