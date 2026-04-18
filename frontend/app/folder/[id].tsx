@@ -7,9 +7,9 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Image,
   Alert,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -71,11 +71,13 @@ export default function FolderDetailScreen() {
       }
 
       // Fetch recipes (light projection for faster render on Android)
-      let recipesUrl = `${API_URL}/api/recipes?folder_id=${id}&light=true`;
+      // IMPORTANT: use authFetch so X-Device-Id is sent — otherwise the backend
+      // falls back to DEFAULT_LOCAL_USER and the user won't see their recipes.
+      let recipesUrl = `/api/recipes?folder_id=${id}&light=true`;
       if (subfolder) {
         recipesUrl += `&subfolder_id=${subfolder}`;
       }
-      const recipesRes = await fetch(recipesUrl);
+      const recipesRes = await authFetch(recipesUrl);
       if (recipesRes.ok) {
         const recipesData = await recipesRes.json();
         setRecipes(recipesData);
@@ -166,9 +168,12 @@ export default function FolderDetailScreen() {
             >
               {recipe.thumbnail_url ? (
                 <Image
-                  source={{ uri: recipe.thumbnail_url }}
+                  source={recipe.thumbnail_url}
                   style={styles.thumbnail}
-                  resizeMode="cover"
+                  contentFit="cover"
+                  transition={150}
+                  cachePolicy="memory-disk"
+                  recyclingKey={recipe.id}
                 />
               ) : (
                 <View style={styles.placeholderThumbnail}>
