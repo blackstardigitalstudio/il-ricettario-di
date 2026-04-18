@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Drawer } from 'expo-router/drawer';
-import { View, Text, TouchableOpacity, StyleSheet, TextInput, Alert, Modal, Image, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, TextInput, Alert, Modal, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { DrawerContentScrollView } from '@react-navigation/drawer';
 import { useRouter } from 'expo-router';
@@ -12,8 +12,6 @@ function CustomDrawerContent(props: any) {
   const router = useRouter();
   const { T, lang, setLang } = useLang();
   const [userName, setUserName] = useState('');
-  const [userEmail, setUserEmail] = useState('');
-  const [userPicture, setUserPicture] = useState('');
   const [showEditName, setShowEditName] = useState(false);
   const [showLangPicker, setShowLangPicker] = useState(false);
   const [newName, setNewName] = useState('');
@@ -25,16 +23,7 @@ function CustomDrawerContent(props: any) {
   const loadUser = async () => {
     try {
       const localName = await AsyncStorage.getItem('user_name');
-      if (localName) {
-        setUserName(localName);
-      }
-      const stored = await AsyncStorage.getItem('user_data');
-      if (stored) {
-        const data = JSON.parse(stored);
-        if (data.name) setUserName(data.name);
-        setUserEmail(data.email || '');
-        setUserPicture(data.picture || '');
-      }
+      if (localName) setUserName(localName);
     } catch (e) {
       console.log('Error loading user:', e);
     }
@@ -51,35 +40,11 @@ function CustomDrawerContent(props: any) {
         });
       } catch (e) { /* ignore if offline */ }
       setUserName(newName.trim());
-      const stored = await AsyncStorage.getItem('user_data');
-      if (stored) {
-        const data = JSON.parse(stored);
-        data.name = newName.trim();
-        await AsyncStorage.setItem('user_data', JSON.stringify(data));
-      }
       setShowEditName(false);
       Alert.alert(T('done'), `${T('now_is')} "${T('cookbook_of')} ${newName.trim()}"`);
     } catch (e) {
       console.log('Save name error:', e);
     }
-  };
-
-  const handleLogout = async () => {
-    Alert.alert(T('logout'), T('logout_confirm'), [
-      { text: T('cancel'), style: 'cancel' },
-      {
-        text: T('logout'), style: 'destructive',
-        onPress: async () => {
-          try {
-            await authFetch('/api/auth/logout', { method: 'POST' });
-          } catch (e) { /* ignore */ }
-          await AsyncStorage.removeItem('session_token');
-          await AsyncStorage.removeItem('user_data');
-          await AsyncStorage.removeItem('user_name');
-          if (typeof window !== 'undefined') window.location.reload();
-        },
-      },
-    ]);
   };
 
   const currentLang = LANGUAGES.find(l => l.code === lang) || LANGUAGES[0];
@@ -97,16 +62,11 @@ function CustomDrawerContent(props: any) {
     <DrawerContentScrollView {...props} style={ds.scroll} contentContainerStyle={ds.container}>
       {/* User Header */}
       <View style={ds.userHeader}>
-        {userPicture ? (
-          <Image source={{ uri: userPicture }} style={ds.avatar} />
-        ) : (
-          <View style={ds.avatarPlaceholder}>
-            <Ionicons name="person" size={28} color="#FF6B35" />
-          </View>
-        )}
+        <View style={ds.avatarPlaceholder}>
+          <Ionicons name="person" size={28} color="#FF6B35" />
+        </View>
         <TouchableOpacity onPress={() => { setNewName(userName); setShowEditName(true); }} testID="edit-name-btn" style={{ flex: 1 }}>
           <Text style={ds.userName} numberOfLines={1}>{userName}</Text>
-          {userEmail ? <Text style={ds.userEmail} numberOfLines={1}>{userEmail}</Text> : null}
         </TouchableOpacity>
       </View>
 

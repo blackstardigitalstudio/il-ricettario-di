@@ -126,7 +126,6 @@ function AppRoot() {
         <Stack.Screen name="(drawer)" options={{ headerShown: false }} />
         <Stack.Screen name="recipe/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="folder/[id]" options={{ headerShown: false }} />
-        <Stack.Screen name="google-login" options={{ headerShown: false, presentation: 'modal' }} />
         <Stack.Screen name="web-downloader" options={{ headerShown: false, presentation: 'modal' }} />
       </Stack>
     </>

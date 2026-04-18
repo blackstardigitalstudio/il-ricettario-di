@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert,
-  Switch, Platform, ActivityIndicator, Image, Modal, Share,
+  Switch, Platform, ActivityIndicator, Modal, Share,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, useNavigation } from 'expo-router';
+import { useNavigation } from 'expo-router';
 import { DrawerActions } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -16,7 +16,6 @@ import { useLang, LANGUAGES } from '../../src/context/LangContext';
 import { useTheme } from '../../src/context/ThemeContext';
 
 export default function SettingsScreen() {
-  const router = useRouter();
   const navigation = useNavigation();
   const { T, lang, setLang } = useLang();
   const { mode, colors, toggle } = useTheme();
