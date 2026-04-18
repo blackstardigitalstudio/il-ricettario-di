@@ -27,7 +27,7 @@ export default function FavoritesScreen() {
 
   const load = async () => {
     try {
-      const res = await authFetch('/api/recipes?favorites=true');
+      const res = await authFetch('/api/recipes?favorites=true&light=true');
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) setRecipes(data);

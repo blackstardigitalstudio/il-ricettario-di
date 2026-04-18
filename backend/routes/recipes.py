@@ -65,7 +65,15 @@ async def get_recipes_count(request: Request):
 @router.get("/recipes")
 async def get_recipes(request: Request, folder_id: Optional[str] = None,
                      subfolder_id: Optional[str] = None, search: Optional[str] = None,
-                     favorites: Optional[bool] = None):
+                     favorites: Optional[bool] = None,
+                     light: Optional[bool] = False):
+    """
+    Returns recipes for the current user.
+    If `light=true` is passed, returns only the minimal projection needed for list UIs
+    (home/folder list). This drastically reduces JSON size + parse time on low-end
+    Android devices by excluding heavy fields like `caption`, `transcription`,
+    `ingredients`, `video_url` (which may include base64 thumbnails).
+    """
     user = await get_current_user(request)
     q = {"user_id": user["user_id"]}
     if folder_id:
@@ -84,7 +92,23 @@ async def get_recipes(request: Request, folder_id: Optional[str] = None,
             {"ingredients": sr},
             {"tags": sr},  # tags is a list of strings; $regex matches any element
         ]
-    return await db.recipes.find(q, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    if light:
+        projection = {
+            "_id": 0,
+            "id": 1,
+            "name": 1,
+            "platform": 1,
+            "thumbnail_url": 1,
+            "created_at": 1,
+            "is_favorite": 1,
+            "transcription_status": 1,
+            "ingredients_status": 1,
+            "folder_id": 1,
+            "subfolder_id": 1,
+        }
+    else:
+        projection = {"_id": 0}
+    return await db.recipes.find(q, projection).sort("created_at", -1).to_list(1000)
 
 
 @router.get("/recipes/{recipe_id}")

@@ -70,8 +70,8 @@ export default function FolderDetailScreen() {
         }
       }
 
-      // Fetch recipes
-      let recipesUrl = `${API_URL}/api/recipes?folder_id=${id}`;
+      // Fetch recipes (light projection for faster render on Android)
+      let recipesUrl = `${API_URL}/api/recipes?folder_id=${id}&light=true`;
       if (subfolder) {
         recipesUrl += `&subfolder_id=${subfolder}`;
       }
