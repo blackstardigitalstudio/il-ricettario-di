@@ -76,7 +76,14 @@ async def get_recipes(request: Request, folder_id: Optional[str] = None,
         q["is_favorite"] = True
     if search:
         sr = {"$regex": search, "$options": "i"}
-        q["$or"] = [{"name": sr}, {"caption": sr}, {"notes": sr}, {"transcription": sr}]
+        q["$or"] = [
+            {"name": sr},
+            {"caption": sr},
+            {"notes": sr},
+            {"transcription": sr},
+            {"ingredients": sr},
+            {"tags": sr},  # tags is a list of strings; $regex matches any element
+        ]
     return await db.recipes.find(q, {"_id": 0}).sort("created_at", -1).to_list(1000)
 
 

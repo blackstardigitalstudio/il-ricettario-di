@@ -168,6 +168,30 @@ backend:
         agent: "testing"
         comment: "NEW FEATURES REGRESSION (2026-04-17) PASSED 41/41. A) POST /api/recipes returns new default fields: tags=[], difficulty='', prep_time=0, cook_time=0, is_favorite=false, transcription='', transcription_status='none'. B) PUT with {tags,difficulty,prep_time,cook_time,is_favorite,transcription} persists all values and transcription_status auto-switches to 'done' when transcription is non-empty; whitespace-only transcription does NOT flip status (stays 'none'). C) GET /api/recipes?favorites=true returns only is_favorite=true docs; unfiltered GET still returns the recipe; after PUT is_favorite=false the recipe is excluded from favorites filter. D) Partial PUT with only {tags:['dolce']} leaves difficulty/prep_time/cook_time/is_favorite/transcription/transcription_status unchanged. E) DELETE removes the recipe (subsequent GET -> 404). F) All pre-existing endpoints still pass: GET /api/ ('Il Ricettario - API'), Folders CRUD with cascade delete (subfolders + recipes removed), Subfolders CRUD, Recipes basic CRUD, /recipes/count, /recipes/random?count=3, POST /api/extract on invalid URL returns success:false, POST /api/recipes on unsupported URL returns 400, /auth/me returns DEFAULT_LOCAL_USER fallback, /auth/logout returns {'message':'Logout effettuato'}, /instagram/session GET returns {connected:false,...} and DELETE returns {success:true,connected:false}. No regressions detected."
 
+  - task: "Extended recipe search (ingredients + tags)"
+    implemented: true
+    working: true
+    file: "backend/routes/recipes.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "NEW FEATURE REGRESSION (2026-04-18) PASSED. GET /api/recipes?search=<term> now also matches `ingredients` (string) and `tags` (list) in addition to existing name/caption/notes/transcription. Verified with a freshly created recipe Pizza Margherita having ingredients='- 300g farina\\n- 250ml acqua\\n- Lievito\\n- Sale' and tags=['italiano','dolce-casa']: search=farina -> matched via ingredients, search=italiano -> matched via tags, search=dolce-casa -> matched exact tag element, search=Pizza -> still matches via name (regression), search=FARINA -> case-insensitive match OK, search=nonexistent_term_xyz -> empty result. User isolation verified via X-Device-Id: a different device does NOT see the recipe when searching. No regression in any other recipe endpoint."
+
+  - task: "Shopping List AI aggregation endpoint"
+    implemented: true
+    working: true
+    file: "backend/routes/shopping.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "NEW FEATURE (2026-04-18) PASSED. POST /api/shopping-list/generate with {recipe_ids:[id1,id2], language:'it'} returns 200 with {id, items:[...9], raw:str, recipe_names:['Tiramisù della Nonna','Pasta al Pomodoro']}. Gemini via emergentintegrations actually aggregated duplicates correctly (100g zucchero + 100g zucchero => '200g zucchero' in raw output). Error paths: empty recipe_ids -> 400 ('Nessuna ricetta selezionata'); unknown recipe id -> 404 ('Nessuna ricetta trovata'); recipe exists but has no ingredients -> 400 ('Le ricette selezionate non hanno ancora ingredienti estratti.'). User isolation verified: another X-Device-Id cannot generate list for recipes belonging to someone else -> 404. Persisted shopping_lists doc returned with UUID id. Fallback path (emergentintegrations exception) is implemented (plain-text concat) but was not triggered in this run because AI call succeeded."
+
   - task: "Database Integration"
     implemented: true
     working: true
@@ -213,7 +237,8 @@ metadata:
 
 test_plan:
   current_focus:
-    - "Recipe editor + tags/difficulty/times + favorites (NEW FEATURES) regression"
+    - "Extended recipe search (ingredients + tags)"
+    - "Shopping List AI aggregation endpoint"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -235,3 +260,9 @@ agent_communication:
 
   - agent: "testing"
     message: "RECIPE NEW FEATURES + FULL REGRESSION (2026-04-17): ran 41 backend tests at http://localhost:8001/api, 41/41 PASSED. NEW: (A) POST /api/recipes returns defaults tags=[], difficulty='', prep_time=0, cook_time=0, is_favorite=false plus transcription='' and transcription_status='none'. (B) PUT with {tags,difficulty,prep_time,cook_time,is_favorite,transcription} persists every field and sets transcription_status='done' automatically; whitespace-only transcription correctly does NOT flip the status. (C) GET /api/recipes?favorites=true returns only is_favorite=true records; the recipe is still visible in unfiltered GET; after PUT is_favorite=false the favorites filter no longer lists it. (D) Partial PUT with only {tags:['dolce']} leaves difficulty/prep_time/cook_time/is_favorite/transcription/transcription_status untouched. (E) DELETE removes the recipe (subsequent GET -> 404). REGRESSION: GET /api/ returns 'Il Ricettario - API'; Folders/Subfolders/Recipes CRUD, /recipes/count, /recipes/random?count=3, cascade delete (folder -> subfolders+recipes), POST /api/extract (invalid URL -> success:false), POST /api/recipes (unsupported URL -> 400), /auth/me DEFAULT_LOCAL_USER fallback, /auth/logout, /instagram/session GET & DELETE — all unchanged. No regressions."
+
+  - agent: "main"
+    message: "FEATURE ADD (2026-04-18): (1) Extended /api/recipes search: the `search=` query now also matches `ingredients` and `tags` (list of strings). Existing fields name/caption/notes/transcription still matched. (2) NEW endpoint POST /api/shopping-list/generate { recipe_ids:[...], language:'it' } — aggregates ingredients from multiple recipes via Gemini (emergentintegrations) into a single deduplicated shopping list (sums quantities for common ingredients), persists doc in db.shopping_lists, returns {id, items:[...], raw:str, recipe_names:[...]}. Returns 400 if no recipes selected or none have ingredients. Has a plain-text concatenation fallback if LLM call fails. (3) Mounted new router in server.py. Please run focused regression: a) search=pizza still works AND a new search that only matches ingredients/tags returns the expected recipe; b) POST /api/shopping-list/generate with 2 recipes having ingredients returns items>0; c) with empty recipe_ids -> 400; d) with recipe_ids containing ids that have no ingredients -> 400; e) user isolation: only recipes belonging to the caller's X-Device-Id/user are considered. No frontend-only changes need backend testing."
+
+  - agent: "testing"
+    message: "NEW FEATURES + FULL REGRESSION (2026-04-18): ran 56 backend tests at http://localhost:8001/api, 56/56 PASSED. FEATURE 1 (Extended recipe search): GET /api/recipes?search=<term> correctly matches ingredients (search=farina), tags (search=italiano, search=dolce-casa), name (search=Pizza regression), is case-insensitive (search=FARINA), and returns empty for unknown terms. User isolation via X-Device-Id works: another device does not see the recipe. FEATURE 2 (Shopping list AI): POST /api/shopping-list/generate with 2 recipes having ingredients -> 200 with items (9 entries), raw string, and recipe_names of length 2. Gemini actually aggregated duplicate ingredients (100g+100g zucchero -> 200g zucchero). Error paths verified: empty recipe_ids -> 400 ('Nessuna ricetta selezionata'); unknown id -> 404 ('Nessuna ricetta trovata'); recipe without ingredients -> 400 ('Le ricette selezionate non hanno ancora ingredienti estratti.'). Cross-user isolation: other device requesting our recipe_ids -> 404. REGRESSION: GET /api/ ('Il Ricettario - API'), Folders/Subfolders/Recipes full CRUD, /recipes/count, /recipes/random?count=3, /recipes?favorites=true filter, cascade delete, POST /api/extract invalid URL -> success:false, POST /api/recipes unsupported URL -> 400, /auth/me DEFAULT_LOCAL_USER fallback, /auth/logout, /instagram/session GET & DELETE, new fields (tags/difficulty/prep_time/cook_time/is_favorite) and transcription auto-done all still pass. No regressions detected."

@@ -9,6 +9,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { DrawerActions } from '@react-navigation/native';
 import { useNavigation } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
+import { useShareIntent } from 'expo-share-intent';
 import { authFetch } from '../../src/utils/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLang } from '../../src/context/LangContext';
@@ -37,6 +38,12 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [userName, setUserName] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Share Intent hook - handles incoming shared URLs from iOS/Android share sheet.
+  // Safely degrades to Clipboard fallback when native module is unavailable (e.g. Expo Go / web).
+  const shareIntentHook = useShareIntent({ debug: false, resetOnBackground: true });
+  const shareIntent = shareIntentHook?.shareIntent;
+  const resetShareIntent = shareIntentHook?.resetShareIntent;
 
   const fetchRecipes = async (query?: string) => {
     try {
@@ -99,6 +106,23 @@ export default function HomeScreen() {
       checkClipboardForRecipeLink();
     }, [])
   );
+
+  // React to a freshly received share intent (iOS/Android native share sheet).
+  // We extract the IG/FB URL from webUrl or text and prefill the Add screen.
+  useEffect(() => {
+    if (!shareIntent) return;
+    const rawText: string =
+      (shareIntent as any)?.webUrl ||
+      (shareIntent as any)?.text ||
+      '';
+    if (!rawText) return;
+    const m = rawText.match(/https?:\/\/(?:www\.)?(?:instagram\.com|instagr\.am|facebook\.com|fb\.com|fb\.watch)\/[^\s]+/i);
+    const url = m ? m[0] : rawText;
+    if (resetShareIntent) {
+      try { resetShareIntent(); } catch (e) { /* ignore */ }
+    }
+    router.push({ pathname: '/(drawer)/add', params: { prefillUrl: url } });
+  }, [shareIntent, resetShareIntent, router]);
 
   // When the app comes back to foreground, check the clipboard for IG/FB URLs
   // and offer to save them as a new recipe. This is the pragmatic alternative

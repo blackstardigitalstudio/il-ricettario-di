@@ -336,6 +336,227 @@ def test_invalid_url_on_recipe():
     record("POST /api/recipes (unsupported URL -> 400)", ok, f"status={r.status_code} body={r.text[:200]}")
 
 
+# ---------------------------------------------------------------------------
+# NEW FEATURE 1: Extended recipe search (ingredients + tags)
+# NEW FEATURE 2: Shopping list AI generation
+# ---------------------------------------------------------------------------
+
+def _make_device_headers(device_id: str) -> dict:
+    return {"X-Device-Id": device_id}
+
+
+def test_extended_recipe_search():
+    """Search should also match `ingredients` and `tags` (regression: still matches `name`)."""
+    device = "dev-search-" + "a" * 16  # >= 16 chars
+    headers = _make_device_headers(device)
+
+    # 1. Create recipe
+    create_payload = {
+        "name": "Pizza Margherita",
+        "source_url": "https://www.instagram.com/reel/DabCdEfGhij/",
+        "manual_caption": "delicious",
+    }
+    r = requests.post(f"{BASE}/recipes", json=create_payload, headers=headers)
+    body = safe_json(r)
+    ok = r.status_code == 200 and isinstance(body, dict) and body.get("id")
+    record("SEARCH setup: POST /api/recipes (Pizza Margherita)", ok,
+           f"status={r.status_code} body_keys={list(body.keys()) if isinstance(body, dict) else body}")
+    if not ok:
+        return
+    recipe_id = body["id"]
+
+    # Populate ingredients + tags via PUT
+    put_payload = {
+        "ingredients": "- 300g farina\n- 250ml acqua\n- Lievito\n- Sale",
+        "tags": ["italiano", "dolce-casa"],
+    }
+    r = requests.put(f"{BASE}/recipes/{recipe_id}", json=put_payload, headers=headers)
+    body = safe_json(r)
+    ok = (
+        r.status_code == 200
+        and isinstance(body, dict)
+        and body.get("ingredients") == put_payload["ingredients"]
+        and body.get("tags") == put_payload["tags"]
+    )
+    record("SEARCH setup: PUT ingredients + tags persisted", ok,
+           f"status={r.status_code} ingredients={body.get('ingredients') if isinstance(body, dict) else None!r} "
+           f"tags={body.get('tags') if isinstance(body, dict) else None}")
+
+    # 2. search=farina -> matches ingredients
+    r = requests.get(f"{BASE}/recipes", params={"search": "farina"}, headers=headers)
+    body = safe_json(r)
+    ok = r.status_code == 200 and isinstance(body, list) and any(x.get("id") == recipe_id for x in body)
+    record("SEARCH: search=farina matches via ingredients", ok,
+           f"status={r.status_code} count={len(body) if isinstance(body, list) else 'NA'}")
+
+    # 3. search=italiano -> matches tags
+    r = requests.get(f"{BASE}/recipes", params={"search": "italiano"}, headers=headers)
+    body = safe_json(r)
+    ok = r.status_code == 200 and isinstance(body, list) and any(x.get("id") == recipe_id for x in body)
+    record("SEARCH: search=italiano matches via tags", ok,
+           f"status={r.status_code} count={len(body) if isinstance(body, list) else 'NA'}")
+
+    # 3b. partial tag match (regex) - should also match 'dolce-casa' when searching 'dolce'
+    r = requests.get(f"{BASE}/recipes", params={"search": "dolce-casa"}, headers=headers)
+    body = safe_json(r)
+    ok = r.status_code == 200 and isinstance(body, list) and any(x.get("id") == recipe_id for x in body)
+    record("SEARCH: search=dolce-casa matches via tags (exact tag element)", ok,
+           f"status={r.status_code} count={len(body) if isinstance(body, list) else 'NA'}")
+
+    # 4. search=Pizza -> regression: matches name
+    r = requests.get(f"{BASE}/recipes", params={"search": "Pizza"}, headers=headers)
+    body = safe_json(r)
+    ok = r.status_code == 200 and isinstance(body, list) and any(x.get("id") == recipe_id for x in body)
+    record("SEARCH: search=Pizza matches via name (regression)", ok,
+           f"status={r.status_code} count={len(body) if isinstance(body, list) else 'NA'}")
+
+    # 4b. case-insensitive sanity check via ingredients
+    r = requests.get(f"{BASE}/recipes", params={"search": "FARINA"}, headers=headers)
+    body = safe_json(r)
+    ok = r.status_code == 200 and isinstance(body, list) and any(x.get("id") == recipe_id for x in body)
+    record("SEARCH: case-insensitive (FARINA) still matches", ok,
+           f"count={len(body) if isinstance(body, list) else 'NA'}")
+
+    # 5. search=nonexistent -> empty
+    r = requests.get(f"{BASE}/recipes", params={"search": "nonexistent_term_xyz"}, headers=headers)
+    body = safe_json(r)
+    ok = (
+        r.status_code == 200
+        and isinstance(body, list)
+        and not any(x.get("id") == recipe_id for x in body)
+    )
+    record("SEARCH: unknown term yields no match for our recipe", ok,
+           f"status={r.status_code} count={len(body) if isinstance(body, list) else 'NA'}")
+
+    # User isolation: a different device must NOT see this recipe when searching
+    other_headers = _make_device_headers("dev-other-" + "b" * 16)
+    r = requests.get(f"{BASE}/recipes", params={"search": "farina"}, headers=other_headers)
+    body = safe_json(r)
+    ok = r.status_code == 200 and isinstance(body, list) and not any(x.get("id") == recipe_id for x in body)
+    record("SEARCH: user isolation via X-Device-Id", ok,
+           f"status={r.status_code} count={len(body) if isinstance(body, list) else 'NA'}")
+
+    # Cleanup
+    requests.delete(f"{BASE}/recipes/{recipe_id}", headers=headers)
+
+
+def test_shopping_list_generate():
+    """POST /api/shopping-list/generate aggregates ingredients across multiple recipes."""
+    device = "dev-shopping-" + "c" * 16
+    headers = _make_device_headers(device)
+    created_ids = []
+
+    try:
+        # Create 2 recipes WITH ingredients
+        payloads = [
+            {
+                "name": "Tiramisù della Nonna",
+                "source_url": "https://www.instagram.com/reel/SHOP1ABCDEF/",
+                "manual_caption": "Classic tiramisu",
+                "ingredients_put": "- 4 uova\n- 250g mascarpone\n- 200g savoiardi\n- 100g zucchero\n- caffè q.b.",
+            },
+            {
+                "name": "Pasta al Pomodoro",
+                "source_url": "https://www.instagram.com/reel/SHOP2ABCDEF/",
+                "manual_caption": "Quick pasta",
+                "ingredients_put": "- 400g pasta\n- 500g pomodori\n- 2 spicchi aglio\n- basilico\n- 100g zucchero",
+            },
+        ]
+        for p in payloads:
+            r = requests.post(f"{BASE}/recipes", json={
+                "name": p["name"],
+                "source_url": p["source_url"],
+                "manual_caption": p["manual_caption"],
+            }, headers=headers)
+            body = safe_json(r)
+            if r.status_code != 200 or not isinstance(body, dict):
+                record(f"SHOPPING setup: create recipe {p['name']}", False, f"status={r.status_code}")
+                return
+            rid = body["id"]
+            created_ids.append(rid)
+            # set ingredients
+            r = requests.put(f"{BASE}/recipes/{rid}", json={"ingredients": p["ingredients_put"]},
+                             headers=headers)
+            if r.status_code != 200:
+                record(f"SHOPPING setup: PUT ingredients {p['name']}", False, f"status={r.status_code}")
+                return
+
+        record("SHOPPING setup: created 2 recipes with ingredients", True,
+               f"ids={created_ids}")
+
+        # 2. Generate with valid ids + language=it
+        r = requests.post(f"{BASE}/shopping-list/generate",
+                          json={"recipe_ids": created_ids, "language": "it"},
+                          headers=headers)
+        body = safe_json(r)
+        ok = (
+            r.status_code == 200
+            and isinstance(body, dict)
+            and isinstance(body.get("id"), str)
+            and isinstance(body.get("items"), list)
+            and len(body["items"]) > 0
+            and isinstance(body.get("raw"), str)
+            and isinstance(body.get("recipe_names"), list)
+            and len(body["recipe_names"]) == 2
+        )
+        record("SHOPPING: POST /shopping-list/generate 2 recipes -> 200 with items",
+               ok,
+               f"status={r.status_code} items_count={len(body.get('items', [])) if isinstance(body, dict) else 'NA'} "
+               f"recipe_names={body.get('recipe_names') if isinstance(body, dict) else None} "
+               f"raw_preview={(body.get('raw')[:120] if isinstance(body, dict) and body.get('raw') else '')!r}")
+
+        # 3. Empty recipe_ids -> 400
+        r = requests.post(f"{BASE}/shopping-list/generate",
+                          json={"recipe_ids": [], "language": "it"},
+                          headers=headers)
+        ok = r.status_code == 400
+        record("SHOPPING: empty recipe_ids -> 400", ok,
+               f"status={r.status_code} body={r.text[:200]}")
+
+        # 4. Recipe without ingredients -> 400 "no ingredients"
+        r = requests.post(f"{BASE}/recipes", json={
+            "name": "Senza Ingredienti",
+            "source_url": "https://www.instagram.com/reel/NOINGRED1/",
+            "manual_caption": "x",
+        }, headers=headers)
+        body = safe_json(r)
+        if r.status_code != 200 or not isinstance(body, dict):
+            record("SHOPPING: setup no-ingredients recipe", False, f"status={r.status_code}")
+        else:
+            empty_rid = body["id"]
+            created_ids.append(empty_rid)
+            r = requests.post(f"{BASE}/shopping-list/generate",
+                              json={"recipe_ids": [empty_rid], "language": "it"},
+                              headers=headers)
+            body = safe_json(r) or {}
+            # spec: should return 400 with detail mentioning no ingredients
+            detail = (body.get("detail") or "").lower()
+            ok = r.status_code == 400 and ("ingredient" in detail or "ingredienti" in detail)
+            record("SHOPPING: only recipe-without-ingredients -> 400 (no ingredients)", ok,
+                   f"status={r.status_code} body={body}")
+
+        # 5. Fake id not owned by this user -> 404
+        r = requests.post(f"{BASE}/shopping-list/generate",
+                          json={"recipe_ids": ["does-not-exist-xyz"], "language": "it"},
+                          headers=headers)
+        body = safe_json(r)
+        ok = r.status_code == 404
+        record("SHOPPING: completely unknown id -> 404", ok,
+               f"status={r.status_code} body={body}")
+
+        # 6. User isolation: another device's request for recipes of THIS device -> 404
+        other_headers = _make_device_headers("dev-isolate-" + "d" * 16)
+        r = requests.post(f"{BASE}/shopping-list/generate",
+                          json={"recipe_ids": created_ids[:2], "language": "it"},
+                          headers=other_headers)
+        ok = r.status_code == 404
+        record("SHOPPING: other user cannot see our recipes -> 404", ok,
+               f"status={r.status_code}")
+    finally:
+        for rid in created_ids:
+            requests.delete(f"{BASE}/recipes/{rid}", headers=headers)
+
+
 def test_delete_folder_cascade():
     r = requests.post(f"{BASE}/folders", json={"name": "CartellaCascata"})
     if r.status_code != 200:
@@ -404,6 +625,10 @@ def main():
         # NEW FEATURE TESTS (tags, difficulty, times, favorites, transcription auto-done)
         test_new_recipe_features()
         test_transcription_empty_does_not_flip_status()
+
+        # NEW FEATURE TESTS (2026-04-18):
+        test_extended_recipe_search()
+        test_shopping_list_generate()
     except Exception as e:
         record("UNEXPECTED EXCEPTION", False, repr(e))
     finally:

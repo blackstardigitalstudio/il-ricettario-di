@@ -30,13 +30,6 @@
         "ACCESS_NETWORK_STATE",
         "WRITE_EXTERNAL_STORAGE",
         "READ_EXTERNAL_STORAGE"
-      ],
-      "intentFilters": [
-        {
-          "action": "SEND",
-          "category": ["DEFAULT"],
-          "data": [{ "mimeType": "text/plain" }]
-        }
       ]
     },
     "web": {
@@ -57,7 +50,18 @@
       ],
       "expo-video",
       "expo-localization",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-share-intent",
+        {
+          "iosActivationRules": {
+            "NSExtensionActivationSupportsWebURLWithMaxCount": 1,
+            "NSExtensionActivationSupportsWebPageWithMaxCount": 1,
+            "NSExtensionActivationSupportsText": true
+          },
+          "androidIntentFilters": ["text/*"]
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
