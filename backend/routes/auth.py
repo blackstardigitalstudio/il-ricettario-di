@@ -32,6 +32,17 @@ async def update_profile(request: Request):
     if new_name:
         await db.users.update_one(
             {"user_id": user["user_id"]},
-            {"$set": {"name": new_name}},
+            {
+                "$set": {"name": new_name},
+                "$setOnInsert": {
+                    "user_id": user["user_id"],
+                    "email": user.get("email", ""),
+                    "picture": user.get("picture", ""),
+                    "is_anonymous": user.get("is_anonymous", True),
+                },
+            },
+            upsert=True,
         )
-    return await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    doc = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    # For anonymous device users never persisted, fall back to the transient doc
+    return doc or {**user, "name": new_name or user.get("name", "")}

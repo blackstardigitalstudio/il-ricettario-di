@@ -53,6 +53,13 @@ async def get_current_user(request: Request) -> dict:
     # Anonymous per-installation user
     device_id = request.headers.get("X-Device-Id", "").strip()
     if device_id and 16 <= len(device_id) <= 128:
+        uid = f"device_{device_id}"
+        # Prefer the persisted record (if the user has set a custom name),
+        # otherwise fall back to the transient device user dict.
+        persisted = await db.users.find_one({"user_id": uid}, {"_id": 0})
+        if persisted:
+            persisted.setdefault("is_anonymous", True)
+            return persisted
         return _device_user(device_id)
 
     return DEFAULT_LOCAL_USER
