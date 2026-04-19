@@ -13,6 +13,7 @@ import * as Clipboard from 'expo-clipboard';
 import { authFetch } from '../../src/utils/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLang } from '../../src/context/LangContext';
+import { useTheme } from '../../src/context/ThemeContext';
 
 const BLURHASH = 'L6Pj0^jE.AyE_3t7t7R**0o#DgR4';
 const THUMB_TRANSITION = 150;
@@ -28,7 +29,7 @@ interface Recipe {
 }
 
 /** Memoised horizontal "what to cook today" card */
-const RandomCard = memo(function RandomCard({ r, onPress }: { r: Recipe; onPress: () => void }) {
+const RandomCard = memo(function RandomCard({ r, onPress, st }: { r: Recipe; onPress: () => void; st: any }) {
   const dateStr = useMemo(
     () => (r.created_at ? new Date(r.created_at).toLocaleDateString(undefined) : ''),
     [r.created_at]
@@ -128,6 +129,8 @@ export default function HomeScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const { T } = useLang();
+  const { colors } = useTheme();
+  const st = useMemo(() => makeStyles(colors), [colors]);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [randomRecipes, setRandomRecipes] = useState<Recipe[]>([]);
   const [loading, setLoading] = useState(true);
@@ -275,6 +278,7 @@ export default function HomeScreen() {
       onPress={() => router.push(`/recipe/${item.id}`)}
       onDelete={() => deleteRecipe(item.id)}
       labelNoDescription={noDescLabel}
+      st={st}
     />
   );
 
@@ -288,7 +292,7 @@ export default function HomeScreen() {
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.randomScroll}>
             {randomRecipes.map((r) => (
-              <RandomCard key={r.id} r={r} onPress={() => router.push(`/recipe/${r.id}`)} />
+              <RandomCard key={r.id} r={r} onPress={() => router.push(`/recipe/${r.id}`)} st={st} />
             ))}
           </ScrollView>
         </View>
@@ -384,8 +388,16 @@ export default function HomeScreen() {
   );
 }
 
-const st = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0f0f0f' },
+const st = makeStyles({
+  bg: '#0f0f0f', card: '#1a1a1a', cardBorder: '#2a2a2a', text: '#ffffff',
+  textMuted: '#aaaaaa', textSubtle: '#666666', accent: '#FF6B35',
+  accentSoft: '#FF6B3520', divider: '#222222', overlay: 'rgba(0,0,0,0.85)',
+  inputBg: '#252525', success: '#4CAF50', danger: '#FF4444',
+});
+
+function makeStyles(colors: any) {
+  return StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.bg },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: {
     flexDirection: 'row',
@@ -397,12 +409,12 @@ const st = StyleSheet.create({
   },
   menuBtn: {
     padding: 8,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: colors.card,
     borderRadius: 12,
   },
   headerText: { flex: 1 },
-  title: { fontSize: 22, fontWeight: 'bold', color: '#fff' },
-  subtitle: { fontSize: 13, color: '#888', marginTop: 2 },
+  title: { fontSize: 22, fontWeight: 'bold', color: colors.text },
+  subtitle: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
   searchRow: {
     flexDirection: 'row',
     paddingHorizontal: 16,
@@ -413,16 +425,16 @@ const st = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1a1a1a',
+    backgroundColor: colors.card,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#333',
+    borderColor: colors.cardBorder,
     paddingHorizontal: 12,
     gap: 6,
   },
-  searchInput: { flex: 1, color: '#fff', fontSize: 14, paddingVertical: 10 },
+  searchInput: { flex: 1, color: colors.text, fontSize: 14, paddingVertical: 10 },
   searchBtn: {
-    backgroundColor: '#FF6B35',
+    backgroundColor: colors.accent,
     borderRadius: 10,
     width: 42,
     justifyContent: 'center',
@@ -437,7 +449,7 @@ const st = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: '#333',
+    backgroundColor: colors.card,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
@@ -446,7 +458,7 @@ const st = StyleSheet.create({
     shadowRadius: 5,
     elevation: 6,
     borderWidth: 1,
-    borderColor: '#444',
+    borderColor: colors.cardBorder,
   },
   randomSection: { marginBottom: 20 },
   randomHeader: {
@@ -455,28 +467,28 @@ const st = StyleSheet.create({
     gap: 8,
     marginBottom: 12,
   },
-  randomTitle: { fontSize: 20, fontWeight: 'bold', color: '#fff' },
+  randomTitle: { fontSize: 20, fontWeight: 'bold', color: colors.text },
   randomScroll: { gap: 12 },
   randomCard: {
     width: 140,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: colors.card,
     borderRadius: 14,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#2a2a2a',
+    borderColor: colors.cardBorder,
   },
   randomThumb: { width: 140, height: 100 },
   randomPlaceholder: {
     width: 140,
     height: 100,
-    backgroundColor: '#252525',
+    backgroundColor: colors.inputBg,
     justifyContent: 'center',
     alignItems: 'center',
   },
   randomName: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#fff',
+    color: colors.text,
     padding: 10,
     paddingBottom: 4,
   },
@@ -487,40 +499,40 @@ const st = StyleSheet.create({
     paddingHorizontal: 10,
     paddingBottom: 10,
   },
-  randomDate: { fontSize: 11, color: '#888' },
+  randomDate: { fontSize: 11, color: colors.textMuted },
   sectionLabel: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#aaa',
+    color: colors.textMuted,
     marginBottom: 10,
   },
   emptyContainer: { alignItems: 'center', paddingTop: 60 },
   emptyText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#666',
+    color: colors.textMuted,
     marginTop: 16,
   },
   emptySubtext: {
     fontSize: 13,
-    color: '#555',
+    color: colors.textSubtle,
     marginTop: 6,
     textAlign: 'center',
   },
   recipeCard: {
     flexDirection: 'row',
-    backgroundColor: '#1a1a1a',
+    backgroundColor: colors.card,
     borderRadius: 12,
     marginBottom: 10,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#2a2a2a',
+    borderColor: colors.cardBorder,
   },
   thumb: { width: 80, height: 80 },
   thumbPlaceholder: {
     width: 80,
     height: 80,
-    backgroundColor: '#2a2a2a',
+    backgroundColor: colors.cardBorder,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -529,17 +541,17 @@ const st = StyleSheet.create({
   recipeName: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#fff',
+    color: colors.text,
     flex: 1,
   },
-  recipeCaption: { fontSize: 12, color: '#888', marginTop: 2 },
+  recipeCaption: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
   recipeFooter: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: 2,
   },
-  recipeDate: { fontSize: 11, color: '#666' },
+  recipeDate: { fontSize: 11, color: colors.textSubtle },
   aiBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -555,4 +567,5 @@ const st = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 12,
   },
-});
+  });
+}
