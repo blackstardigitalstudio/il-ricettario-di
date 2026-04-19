@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { LangProvider, useLang, LANGUAGES } from '../src/context/LangContext';
 import { ThemeProvider } from '../src/context/ThemeContext';
+import { initAdMob } from '../src/utils/ads';
 
 function WelcomeScreen({ onComplete }: { onComplete: (name: string) => void }) {
   const { T, lang, setLang } = useLang();
@@ -96,7 +97,11 @@ function AppRoot() {
   const [userName, setUserName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { loadProfile(); }, []);
+  useEffect(() => {
+    loadProfile();
+    // Kick off AdMob init in the background — safe on web/Expo Go (no-op).
+    initAdMob().catch(() => { /* ignore */ });
+  }, []);
 
   const loadProfile = async () => {
     try {

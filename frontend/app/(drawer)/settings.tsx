@@ -14,6 +14,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import { authFetch } from '../../src/utils/api';
 import { useLang, LANGUAGES } from '../../src/context/LangContext';
 import { useTheme } from '../../src/context/ThemeContext';
+import { mandatoryAd } from '../../src/utils/ads';
 
 export default function SettingsScreen() {
   const navigation = useNavigation();
@@ -52,6 +53,9 @@ export default function SettingsScreen() {
   const exportBackup = async () => {
     setExporting(true);
     try {
+      // AdMob: MANDATORY rewarded interstitial before every backup export.
+      // Graceful fallback if ad cannot load (policy-safe: never block user).
+      try { await mandatoryAd(); } catch { /* ignore */ }
       const res = await authFetch('/api/backup/export');
       if (!res.ok) {
         Alert.alert(T('error'), T('backup_export_failed') || 'Esportazione fallita');

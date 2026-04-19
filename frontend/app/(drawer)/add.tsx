@@ -1,4 +1,5 @@
 import { authFetch } from '../../src/utils/api';
+import { triggerCountedAd } from '../../src/utils/ads';
 import { useLang } from '../../src/context/LangContext';
 import React, { useState, useEffect } from 'react';
 import {
@@ -72,6 +73,8 @@ export default function AddRecipeScreen() {
         }),
       });
       if (res.ok) {
+        // AdMob: every 5 saved recipes, show a rewarded interstitial.
+        triggerCountedAd('save_recipe').catch(() => { /* never block UX */ });
         Alert.alert(
           `✅ ${T('recipe_saved')}`,
           T('ai_will_generate'),

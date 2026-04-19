@@ -68,7 +68,13 @@
       ],
       "expo-video",
       "expo-localization",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-8637618891395008~6504676701"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

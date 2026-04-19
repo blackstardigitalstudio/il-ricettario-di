@@ -1,5 +1,6 @@
 import { authFetch } from '../../src/utils/api';
 import { useLang } from '../../src/context/LangContext';
+import { triggerCountedAd } from '../../src/utils/ads';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator,
@@ -105,6 +106,9 @@ export default function RecipeDetailScreen() {
 
   const analyzeVideoForIngredients = async () => {
     if (!recipe) return;
+    // AdMob: every 5 analyses, show a rewarded interstitial BEFORE the heavy
+    // AI call so the user has something to watch while the backend crunches.
+    try { await triggerCountedAd('analyze_ingredients'); } catch { /* ignore */ }
     // Optimistic UI: mark pending
     setRecipe({ ...recipe, ingredients_status: 'pending' });
     try {

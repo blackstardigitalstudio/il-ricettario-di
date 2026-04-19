@@ -71,6 +71,8 @@ export default function ShoppingListScreen() {
       Alert.alert(T('oops') || 'Ops', T('shopping_no_selection') || 'Seleziona almeno una ricetta');
       return;
     }
+    // AdMob: every 5 generations, show a rewarded interstitial BEFORE the AI call.
+    try { await triggerCountedAd('generate_shopping'); } catch { /* ignore */ }
     setGenerating(true);
     try {
       const res = await authFetch('/api/shopping-list/generate', {
