@@ -1,7 +1,8 @@
 import { authFetch } from '../../src/utils/api';
 import { triggerCountedAd } from '../../src/utils/ads';
+import { useTheme } from '../../src/context/ThemeContext';
 import { useLang } from '../../src/context/LangContext';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView,
   ActivityIndicator, Alert, KeyboardAvoidingView, Platform,
@@ -19,6 +20,8 @@ export default function AddRecipeScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const { T } = useLang();
+  const { colors } = useTheme();
+  const st = useMemo(() => makeStyles(colors), [colors]);
   const { prefillUrl } = useLocalSearchParams<{ prefillUrl?: string }>();
   const [url, setUrl] = useState(typeof prefillUrl === 'string' ? prefillUrl : '');
   const [manualCaption, setManualCaption] = useState('');
@@ -237,30 +240,39 @@ export default function AddRecipeScreen() {
   );
 }
 
-const st = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0f0f0f' },
+const st = makeStyles({
+  bg: '#0f0f0f', card: '#1a1a1a', cardBorder: '#2a2a2a', text: '#ffffff',
+  textMuted: '#aaaaaa', textSubtle: '#666666', accent: '#FF6B35',
+  accentSoft: '#FF6B3520', divider: '#222222', overlay: 'rgba(0,0,0,0.85)',
+  inputBg: '#252525', success: '#4CAF50', danger: '#FF4444',
+});
+
+function makeStyles(colors: any) {
+  return StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.bg },
   scrollContent: { paddingBottom: 40 },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12, gap: 12 },
-  menuBtn: { padding: 8, backgroundColor: '#1a1a1a', borderRadius: 12 },
-  title: { fontSize: 24, fontWeight: 'bold', color: '#fff' },
-  subtitle: { fontSize: 13, color: '#888', marginTop: 2 },
+  menuBtn: { padding: 8, backgroundColor: colors.card, borderRadius: 12 },
+  title: { fontSize: 24, fontWeight: 'bold', color: colors.text },
+  subtitle: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
   section: { paddingHorizontal: 20, marginBottom: 8 },
-  label: { fontSize: 13, fontWeight: '600', color: '#aaa', marginBottom: 8 },
-  urlRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a1a', borderRadius: 12, borderWidth: 1, borderColor: '#333' },
-  urlInput: { flex: 1, color: '#fff', fontSize: 15, padding: 14 },
+  label: { fontSize: 13, fontWeight: '600', color: colors.textMuted, marginBottom: 8 },
+  urlRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.cardBorder },
+  urlInput: { flex: 1, color: colors.text, fontSize: 15, padding: 14 },
   pasteBtn: { padding: 14 },
-  textInput: { backgroundColor: '#1a1a1a', borderRadius: 12, borderWidth: 1, borderColor: '#333', color: '#fff', fontSize: 15, padding: 14 },
+  textInput: { backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.cardBorder, color: colors.text, fontSize: 15, padding: 14 },
   textArea: { minHeight: 70, paddingTop: 12 },
-  infoBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a0a', borderRadius: 10, padding: 12, marginTop: 12, gap: 8, borderWidth: 1, borderColor: '#333300' },
-  infoText: { flex: 1, color: '#BBB', fontSize: 13 },
-  pickerBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a1a', borderRadius: 12, borderWidth: 1, borderColor: '#333', padding: 14, gap: 10 },
-  pickerText: { flex: 1, color: '#ccc', fontSize: 15 },
-  pickerList: { backgroundColor: '#252525', borderRadius: 10, marginTop: 6, overflow: 'hidden' },
-  pickerItem: { padding: 12, borderBottomWidth: 1, borderBottomColor: '#333' },
-  pickerActive: { backgroundColor: '#FF6B35' },
-  pickerItemText: { color: '#fff', fontSize: 14 },
-  pickerActiveText: { fontWeight: '600' },
-  saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#28a745', borderRadius: 14, padding: 18, gap: 10, marginTop: 8 },
+  infoBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.accentSoft, borderRadius: 10, padding: 12, marginTop: 12, gap: 8, borderWidth: 1, borderColor: colors.cardBorder },
+  infoText: { flex: 1, color: colors.textMuted, fontSize: 13 },
+  pickerBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.cardBorder, padding: 14, gap: 10 },
+  pickerText: { flex: 1, color: colors.text, fontSize: 15 },
+  pickerList: { backgroundColor: colors.inputBg, borderRadius: 10, marginTop: 6, overflow: 'hidden' },
+  pickerItem: { padding: 12, borderBottomWidth: 1, borderBottomColor: colors.cardBorder },
+  pickerActive: { backgroundColor: colors.accent },
+  pickerItemText: { color: colors.text, fontSize: 14 },
+  pickerActiveText: { color: '#fff', fontWeight: '600' },
+  saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.success, borderRadius: 14, padding: 18, gap: 10, marginTop: 8 },
   saveBtnText: { color: '#fff', fontSize: 18, fontWeight: '700' },
   disabled: { opacity: 0.5 },
-});
+  });
+}

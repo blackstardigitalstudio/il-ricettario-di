@@ -1,8 +1,9 @@
 import { authFetch } from '../../src/utils/api';
 import { useLang } from '../../src/context/LangContext';
+import { useTheme } from '../../src/context/ThemeContext';
 import { triggerCountedAd } from '../../src/utils/ads';
 import { exportRecipeAsPdf } from '../../src/utils/pdf';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator,
   Alert, Linking, TextInput, KeyboardAvoidingView, Platform, Modal, Image, Share,
@@ -36,6 +37,8 @@ export default function RecipeDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { T } = useLang();
+  const { colors } = useTheme();
+  const st = useMemo(() => makeStyles(colors), [colors]);
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [loading, setLoading] = useState(true);
   const [transcribing, setTranscribing] = useState(false);
@@ -695,63 +698,72 @@ export default function RecipeDetailScreen() {
   );
 }
 
-const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0f0f0f' },
+const s = makeStyles({
+  bg: '#0f0f0f', card: '#1a1a1a', cardBorder: '#2a2a2a', text: '#ffffff',
+  textMuted: '#aaaaaa', textSubtle: '#666666', accent: '#FF6B35',
+  accentSoft: '#FF6B3520', divider: '#222222', overlay: 'rgba(0,0,0,0.85)',
+  inputBg: '#252525', success: '#4CAF50', danger: '#FF4444',
+});
+
+function makeStyles(colors: any) {
+  return StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.bg },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#222' },
-  hBtn: { padding: 8 }, hTitle: { flex: 1, fontSize: 17, fontWeight: '600', color: '#fff', marginHorizontal: 4 },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.divider },
+  hBtn: { padding: 8 }, hTitle: { flex: 1, fontSize: 17, fontWeight: '600', color: colors.text, marginHorizontal: 4 },
   scroll: { flex: 1 }, scrollContent: { paddingBottom: 40 },
-  coverImg: { width: '100%', height: 220, backgroundColor: '#1a1a1a' },
+  coverImg: { width: '100%', height: 220, backgroundColor: colors.card },
   coverBadge: { position: 'absolute', bottom: 12, right: 12, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 16, paddingVertical: 6, paddingHorizontal: 12, gap: 4 },
-  coverBadgeText: { color: '#fff', fontSize: 12, fontWeight: '600' },
-  noCover: { height: 160, backgroundColor: '#1a1a1a', justifyContent: 'center', alignItems: 'center' },
+  coverBadgeText: { color: colors.text, fontSize: 12, fontWeight: '600' },
+  noCover: { height: 160, backgroundColor: colors.card, justifyContent: 'center', alignItems: 'center' },
   noCoverText: { color: '#FF6B35', fontSize: 15, fontWeight: '600', marginTop: 8 },
   meta: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, paddingTop: 14 },
-  metaText: { fontSize: 14, color: '#888' }, metaDate: { fontSize: 12, color: '#666', marginLeft: 'auto' },
-  name: { fontSize: 24, fontWeight: 'bold', color: '#fff', paddingHorizontal: 20, marginTop: 6, marginBottom: 10 },
+  metaText: { fontSize: 14, color: colors.textMuted }, metaDate: { fontSize: 12, color: colors.textSubtle, marginLeft: 'auto' },
+  name: { fontSize: 24, fontWeight: 'bold', color: colors.text, paddingHorizontal: 20, marginTop: 6, marginBottom: 10 },
   metaRow: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 20, gap: 8, marginBottom: 10 },
-  chip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 5, paddingHorizontal: 10, borderRadius: 14, borderWidth: 1, borderColor: '#333', backgroundColor: '#1a1a1a' },
-  chipText: { fontSize: 12, color: '#aaa', fontWeight: '600' },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 5, paddingHorizontal: 10, borderRadius: 14, borderWidth: 1, borderColor: colors.cardBorder, backgroundColor: colors.card },
+  chipText: { fontSize: 12, color: colors.textMuted, fontWeight: '600' },
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: 20, marginBottom: 10 },
   tag: { backgroundColor: '#FF6B3520', borderRadius: 12, paddingVertical: 4, paddingHorizontal: 10 },
   tagText: { color: '#FF6B35', fontSize: 12, fontWeight: '600' },
   actions: { flexDirection: 'row', paddingHorizontal: 20, gap: 8, marginBottom: 14 },
   actBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 10, paddingVertical: 12, gap: 6 },
-  actText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  actText: { color: colors.text, fontSize: 13, fontWeight: '600' },
   disabled: { opacity: 0.5 },
-  card: { backgroundColor: '#1a1a1a', borderRadius: 12, padding: 14, marginHorizontal: 20, marginBottom: 10, borderWidth: 1, borderColor: '#2a2a2a' },
+  card: { backgroundColor: colors.card, borderRadius: 12, padding: 14, marginHorizontal: 20, marginBottom: 10, borderWidth: 1, borderColor: colors.cardBorder },
   cardH: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
-  cardT: { fontSize: 14, fontWeight: '600', color: '#aaa', flex: 1 },
-  cardBody: { fontSize: 14, color: '#ddd', lineHeight: 22 },
-  empty: { fontSize: 14, color: '#666', fontStyle: 'italic' },
+  cardT: { fontSize: 14, fontWeight: '600', color: colors.textMuted, flex: 1 },
+  cardBody: { fontSize: 14, color: colors.text, lineHeight: 22 },
+  empty: { fontSize: 14, color: colors.textSubtle, fontStyle: 'italic' },
   editIcon: { padding: 4, backgroundColor: '#FF6B3520', borderRadius: 8 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   rowText: { fontSize: 14, color: '#FF6B35' },
   err: { fontSize: 14, color: '#FF4444', marginBottom: 8 },
-  retryBtn: { backgroundColor: '#333', borderRadius: 8, padding: 10, alignItems: 'center' },
+  retryBtn: { backgroundColor: colors.cardBorder, borderRadius: 8, padding: 10, alignItems: 'center' },
   retryText: { color: '#FF6B35', fontWeight: '600' },
   aiBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#6C3DC1', borderRadius: 10, padding: 12, gap: 6 },
-  aiBtnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  aiBtnText: { color: colors.text, fontSize: 14, fontWeight: '600' },
   mOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' },
   mKAV: { flex: 1, justifyContent: 'flex-end' },
-  mContent: { backgroundColor: '#1a1a1a', borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '92%', padding: 20 },
+  mContent: { backgroundColor: colors.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '92%', padding: 20 },
   mHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  mTitle: { fontSize: 22, fontWeight: 'bold', color: '#fff' },
-  mLabel: { fontSize: 13, fontWeight: '600', color: '#aaa', marginBottom: 6, marginTop: 12 },
-  mInput: { backgroundColor: '#252525', borderRadius: 12, padding: 14, fontSize: 15, color: '#fff', borderWidth: 1, borderColor: '#333' },
+  mTitle: { fontSize: 22, fontWeight: 'bold', color: colors.text },
+  mLabel: { fontSize: 13, fontWeight: '600', color: colors.textMuted, marginBottom: 6, marginTop: 12 },
+  mInput: { backgroundColor: colors.inputBg, borderRadius: 12, padding: 14, fontSize: 15, color: colors.text, borderWidth: 1, borderColor: colors.cardBorder },
   mArea: { minHeight: 80, paddingTop: 12 },
   mAreaBig: { minHeight: 180, paddingTop: 12 },
   diffRow: { flexDirection: 'row', gap: 8 },
-  diffChip: { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center', borderWidth: 1, borderColor: '#333', backgroundColor: '#252525' },
-  diffText: { color: '#ccc', fontSize: 14 },
+  diffChip: { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center', borderWidth: 1, borderColor: colors.cardBorder, backgroundColor: colors.inputBg },
+  diffText: { color: colors.text, fontSize: 14 },
   timeRow: { flexDirection: 'row', gap: 10 },
   tagEditRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   addTagBtn: { backgroundColor: '#FF6B35', borderRadius: 10, width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
   tagEdit: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FF6B3520', borderRadius: 12, paddingVertical: 4, paddingHorizontal: 10 },
   mSave: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#28a745', borderRadius: 12, padding: 16, marginTop: 20, marginBottom: 20, gap: 8 },
-  mSaveText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  folderRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 12, borderRadius: 10, backgroundColor: '#252525', marginBottom: 6, borderWidth: 1, borderColor: '#2a2a2a' },
+  mSaveText: { color: colors.text, fontSize: 16, fontWeight: '600' },
+  folderRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 12, borderRadius: 10, backgroundColor: colors.inputBg, marginBottom: 6, borderWidth: 1, borderColor: colors.cardBorder },
   folderRowActive: { backgroundColor: '#FF6B3520', borderColor: '#FF6B35' },
-  folderLabel: { flex: 1, color: '#ddd', fontSize: 15 },
+  folderLabel: { flex: 1, color: colors.text, fontSize: 15 },
   folderLabelActive: { color: '#FF6B35', fontWeight: '600' },
 });
+}

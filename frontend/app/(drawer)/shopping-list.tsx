@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator,
   Alert, Image, Share, Platform,
@@ -9,6 +9,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import { authFetch } from '../../src/utils/api';
 import { useLang } from '../../src/context/LangContext';
+import { useTheme } from '../../src/context/ThemeContext';
 
 interface Recipe {
   id: string;
@@ -22,6 +23,8 @@ interface Recipe {
 export default function ShoppingListScreen() {
   const router = useRouter();
   const { T, lang } = useLang();
+  const { colors } = useTheme();
+  const st = useMemo(() => makeStyles(colors), [colors]);
 
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -334,56 +337,64 @@ export default function ShoppingListScreen() {
   );
 }
 
-const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0f0f0f' },
+const s = makeStyles({
+  bg: '#0f0f0f', card: '#1a1a1a', cardBorder: '#2a2a2a', text: '#ffffff',
+  textMuted: '#aaaaaa', textSubtle: '#666666', accent: '#FF6B35',
+  accentSoft: '#FF6B3520', divider: '#222222', overlay: 'rgba(0,0,0,0.85)',
+  inputBg: '#252525', success: '#4CAF50', danger: '#FF4444',
+});
+
+function makeStyles(colors: any) {
+  return StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.bg },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 12, paddingTop: 12, paddingBottom: 10, gap: 6,
   },
   hBtn: { padding: 8 },
-  title: { fontSize: 20, fontWeight: 'bold', color: '#fff' },
-  subtitle: { fontSize: 12, color: '#888', marginTop: 2 },
+  title: { fontSize: 20, fontWeight: 'bold', color: colors.text },
+  subtitle: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
   toolbar: {
     flexDirection: 'row', paddingHorizontal: 16, paddingBottom: 8, gap: 8,
   },
   toolBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: '#1a1a1a', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10,
-    borderWidth: 1, borderColor: '#2a2a2a',
+    backgroundColor: colors.card, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10,
+    borderWidth: 1, borderColor: colors.cardBorder,
   },
-  toolBtnText: { color: '#aaa', fontSize: 13, fontWeight: '500' },
+  toolBtnText: { color: colors.textMuted, fontSize: 13, fontWeight: '500' },
   scroll: { flex: 1 },
   scrollContent: { padding: 16, paddingBottom: 120 },
   sectionLabel: {
-    fontSize: 13, fontWeight: '600', color: '#888',
+    fontSize: 13, fontWeight: '600', color: colors.textMuted,
     marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5,
   },
   row: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: '#1a1a1a', borderRadius: 12, padding: 10, marginBottom: 8,
-    borderWidth: 1, borderColor: '#2a2a2a',
+    backgroundColor: colors.card, borderRadius: 12, padding: 10, marginBottom: 8,
+    borderWidth: 1, borderColor: colors.cardBorder,
   },
   rowSelected: { borderColor: '#FF6B35', backgroundColor: '#2a1a10' },
   thumb: { width: 50, height: 50, borderRadius: 8 },
   thumbPlaceholder: {
-    backgroundColor: '#252525', justifyContent: 'center', alignItems: 'center',
+    backgroundColor: colors.inputBg, justifyContent: 'center', alignItems: 'center',
   },
-  rowName: { flex: 1, color: '#fff', fontSize: 14, fontWeight: '500' },
+  rowName: { flex: 1, color: colors.text, fontSize: 14, fontWeight: '500' },
   checkbox: {
     width: 24, height: 24, borderRadius: 6,
-    borderWidth: 2, borderColor: '#555',
+    borderWidth: 2, borderColor: colors.textSubtle,
     justifyContent: 'center', alignItems: 'center',
     backgroundColor: 'transparent',
   },
   checkboxActive: { backgroundColor: '#FF6B35', borderColor: '#FF6B35' },
   emptyBox: { alignItems: 'center', paddingTop: 60, paddingHorizontal: 20 },
   emptyText: {
-    fontSize: 16, fontWeight: '600', color: '#888',
+    fontSize: 16, fontWeight: '600', color: colors.textMuted,
     marginTop: 16, textAlign: 'center',
   },
   emptyHint: {
-    fontSize: 13, color: '#666',
+    fontSize: 13, color: colors.textSubtle,
     marginTop: 8, textAlign: 'center', lineHeight: 19,
   },
   generateBtn: {
@@ -394,25 +405,26 @@ const s = StyleSheet.create({
     shadowOpacity: 0.4, shadowRadius: 8, elevation: 6,
   },
   generateBtnDisabled: { backgroundColor: '#444', shadowOpacity: 0 },
-  generateText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  generateText: { color: colors.text, fontWeight: '700', fontSize: 16 },
   fromBox: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     marginHorizontal: 16, marginBottom: 10,
-    backgroundColor: '#1a1a1a', padding: 10, borderRadius: 10,
-    borderWidth: 1, borderColor: '#2a2a2a',
+    backgroundColor: colors.card, padding: 10, borderRadius: 10,
+    borderWidth: 1, borderColor: colors.cardBorder,
   },
-  fromText: { flex: 1, color: '#aaa', fontSize: 12, lineHeight: 17 },
+  fromText: { flex: 1, color: colors.textMuted, fontSize: 12, lineHeight: 17 },
   progressBar: {
-    height: 4, backgroundColor: '#222',
+    height: 4, backgroundColor: colors.divider,
     marginHorizontal: 16, marginBottom: 8, borderRadius: 2, overflow: 'hidden',
   },
   progressFill: { height: '100%', backgroundColor: '#FF6B35' },
   listRow: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: '#1a1a1a', borderRadius: 10, padding: 14, marginBottom: 6,
-    borderWidth: 1, borderColor: '#2a2a2a',
+    backgroundColor: colors.card, borderRadius: 10, padding: 14, marginBottom: 6,
+    borderWidth: 1, borderColor: colors.cardBorder,
   },
   listRowChecked: { opacity: 0.55, borderColor: '#FF6B35' },
-  listText: { flex: 1, color: '#fff', fontSize: 15 },
-  listTextChecked: { textDecorationLine: 'line-through', color: '#888' },
+  listText: { flex: 1, color: colors.text, fontSize: 15 },
+  listTextChecked: { textDecorationLine: 'line-through', color: colors.textMuted },
 });
+}

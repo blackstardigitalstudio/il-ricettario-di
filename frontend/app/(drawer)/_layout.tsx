@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Drawer } from 'expo-router/drawer';
 import { View, Text, TouchableOpacity, StyleSheet, TextInput, Alert, Modal, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,10 +7,13 @@ import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authFetch } from '../../src/utils/api';
 import { useLang, LANGUAGES } from '../../src/context/LangContext';
+import { useTheme } from '../../src/context/ThemeContext';
 
 function CustomDrawerContent(props: any) {
   const router = useRouter();
   const { T, lang, setLang } = useLang();
+  const { colors } = useTheme();
+  const ds = useMemo(() => makeDrawerStyles(colors), [colors]);
   const [userName, setUserName] = useState('');
   const [showEditName, setShowEditName] = useState(false);
   const [showLangPicker, setShowLangPicker] = useState(false);
@@ -144,40 +147,44 @@ function CustomDrawerContent(props: any) {
   );
 }
 
-const ds = StyleSheet.create({
+const ds = makeDrawerStyles({ bg:"#0f0f0f", card:"#1a1a1a", cardBorder:"#2a2a2a", text:"#ffffff", textMuted:"#aaaaaa", textSubtle:"#666666", accent:"#FF6B35", accentSoft:"#FF6B3520", divider:"#222222", overlay:"rgba(0,0,0,0.85)", inputBg:"#252525", success:"#4CAF50", danger:"#FF4444" });
+
+function makeDrawerStyles(colors: any) {
+  return StyleSheet.create({
   scroll: { backgroundColor: '#141414' },
   container: { flex: 1 },
   userHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12, gap: 14 },
   avatar: { width: 50, height: 50, borderRadius: 25 },
-  avatarPlaceholder: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#2a2a2a', justifyContent: 'center', alignItems: 'center' },
-  userName: { fontSize: 18, fontWeight: 'bold', color: '#fff' },
-  userEmail: { fontSize: 12, color: '#888', marginTop: 2 },
+  avatarPlaceholder: { width: 50, height: 50, borderRadius: 25, backgroundColor: colors.cardBorder, justifyContent: 'center', alignItems: 'center' },
+  userName: { fontSize: 18, fontWeight: 'bold', color: colors.text },
+  userEmail: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
   appTitle: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, paddingBottom: 8 },
   appTitleText: { fontSize: 16, fontWeight: '600', color: '#FF6B35', flex: 1 },
-  sep: { height: 1, backgroundColor: '#2a2a2a', marginVertical: 10, marginHorizontal: 20 },
+  sep: { height: 1, backgroundColor: colors.cardBorder, marginVertical: 10, marginHorizontal: 20 },
   menuItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, gap: 14 },
   iconCircle: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  menuLabel: { fontSize: 15, fontWeight: '500', color: '#ddd', flex: 1 },
-  langInline: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#252525', borderRadius: 12, paddingHorizontal: 8, paddingVertical: 4 },
+  menuLabel: { fontSize: 15, fontWeight: '500', color: colors.text, flex: 1 },
+  langInline: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.inputBg, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 4 },
   langInlineFlag: { fontSize: 14 },
-  langInlineName: { fontSize: 12, color: '#aaa' },
+  langInlineName: { fontSize: 12, color: colors.textMuted },
   disabled: { opacity: 0.4 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center', padding: 24 },
-  modalContent: { width: '100%', maxWidth: 400, backgroundColor: '#1a1a1a', borderRadius: 20, padding: 24 },
-  modalTitle: { fontSize: 22, fontWeight: 'bold', color: '#fff', textAlign: 'center', marginBottom: 20 },
-  modalInput: { backgroundColor: '#252525', borderRadius: 12, padding: 16, fontSize: 18, color: '#fff', borderWidth: 1, borderColor: '#333', textAlign: 'center' },
+  modalContent: { width: '100%', maxWidth: 400, backgroundColor: colors.card, borderRadius: 20, padding: 24 },
+  modalTitle: { fontSize: 22, fontWeight: 'bold', color: colors.text, textAlign: 'center', marginBottom: 20 },
+  modalInput: { backgroundColor: colors.inputBg, borderRadius: 12, padding: 16, fontSize: 18, color: colors.text, borderWidth: 1, borderColor: colors.cardBorder, textAlign: 'center' },
   modalPreview: { fontSize: 18, fontWeight: '600', color: '#FF6B35', textAlign: 'center', marginVertical: 16 },
   modalBtns: { flexDirection: 'row', gap: 12, marginTop: 8 },
-  cancelBtn: { flex: 1, padding: 14, borderRadius: 12, backgroundColor: '#333', alignItems: 'center' },
-  cancelText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  cancelBtn: { flex: 1, padding: 14, borderRadius: 12, backgroundColor: colors.cardBorder, alignItems: 'center' },
+  cancelText: { color: colors.text, fontSize: 16, fontWeight: '600' },
   saveBtn: { flex: 1, padding: 14, borderRadius: 12, backgroundColor: '#FF6B35', alignItems: 'center' },
-  saveText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  saveText: { color: colors.text, fontSize: 16, fontWeight: '600' },
   langItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 12, borderRadius: 10, gap: 12 },
   langItemActive: { backgroundColor: '#FF6B3520' },
   langItemFlag: { fontSize: 22 },
-  langItemName: { flex: 1, color: '#ddd', fontSize: 16 },
+  langItemName: { flex: 1, color: colors.text, fontSize: 16 },
   langItemNameActive: { color: '#FF6B35', fontWeight: '600' },
 });
+}
 
 export default function DrawerLayout() {
   return (

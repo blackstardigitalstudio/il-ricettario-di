@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl,
   Image, ActivityIndicator,
@@ -9,6 +9,7 @@ import { useFocusEffect, useRouter, useNavigation } from 'expo-router';
 import { DrawerActions } from '@react-navigation/native';
 import { authFetch } from '../../src/utils/api';
 import { useLang } from '../../src/context/LangContext';
+import { useTheme } from '../../src/context/ThemeContext';
 
 interface Recipe {
   id: string; name: string; platform: string; caption: string;
@@ -21,6 +22,8 @@ export default function FavoritesScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const { T } = useLang();
+  const { colors } = useTheme();
+  const st = useMemo(() => makeStyles(colors), [colors]);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -124,28 +127,37 @@ export default function FavoritesScreen() {
   );
 }
 
-const st = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0f0f0f' },
+const st = makeStyles({
+  bg: '#0f0f0f', card: '#1a1a1a', cardBorder: '#2a2a2a', text: '#ffffff',
+  textMuted: '#aaaaaa', textSubtle: '#666666', accent: '#FF6B35',
+  accentSoft: '#FF6B3520', divider: '#222222', overlay: 'rgba(0,0,0,0.85)',
+  inputBg: '#252525', success: '#4CAF50', danger: '#FF4444',
+});
+
+function makeStyles(colors: any) {
+  return StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.bg },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 16, paddingBottom: 14, gap: 12 },
-  menuBtn: { padding: 8, backgroundColor: '#1a1a1a', borderRadius: 12 },
+  menuBtn: { padding: 8, backgroundColor: colors.card, borderRadius: 12 },
   headerText: { flex: 1 },
-  title: { fontSize: 22, fontWeight: 'bold', color: '#fff' },
-  subtitle: { fontSize: 13, color: '#888', marginTop: 2 },
+  title: { fontSize: 22, fontWeight: 'bold', color: colors.text },
+  subtitle: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 16, paddingBottom: 24 },
   emptyContainer: { alignItems: 'center', paddingTop: 80 },
-  emptyText: { fontSize: 17, fontWeight: '600', color: '#666', marginTop: 16 },
-  emptySubtext: { fontSize: 13, color: '#555', marginTop: 6, textAlign: 'center', paddingHorizontal: 30 },
-  recipeCard: { flexDirection: 'row', backgroundColor: '#1a1a1a', borderRadius: 12, marginBottom: 10, overflow: 'hidden', borderWidth: 1, borderColor: '#2a2a2a' },
+  emptyText: { fontSize: 17, fontWeight: '600', color: colors.textSubtle, marginTop: 16 },
+  emptySubtext: { fontSize: 13, color: colors.textSubtle, marginTop: 6, textAlign: 'center', paddingHorizontal: 30 },
+  recipeCard: { flexDirection: 'row', backgroundColor: colors.card, borderRadius: 12, marginBottom: 10, overflow: 'hidden', borderWidth: 1, borderColor: colors.cardBorder },
   thumb: { width: 80, height: 90 },
-  thumbPlaceholder: { width: 80, height: 90, backgroundColor: '#2a2a2a', justifyContent: 'center', alignItems: 'center' },
+  thumbPlaceholder: { width: 80, height: 90, backgroundColor: colors.cardBorder, justifyContent: 'center', alignItems: 'center' },
   recipeInfo: { flex: 1, padding: 10, justifyContent: 'center', gap: 4 },
   recipeHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  recipeName: { fontSize: 14, fontWeight: '600', color: '#fff', flex: 1 },
-  recipeCaption: { fontSize: 12, color: '#888' },
+  recipeName: { fontSize: 14, fontWeight: '600', color: colors.text, flex: 1 },
+  recipeCaption: { fontSize: 12, color: colors.textMuted },
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
   tag: { backgroundColor: '#FF6B3520', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2 },
   tagText: { color: '#FF6B35', fontSize: 10, fontWeight: '600' },
   starBtn: { justifyContent: 'center', alignItems: 'center', paddingHorizontal: 14 },
 });
+}

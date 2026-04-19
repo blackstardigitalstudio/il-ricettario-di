@@ -1,5 +1,5 @@
 import { authFetch } from '../../src/utils/api';
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useNavigation, DrawerActions } from '@react-navigation/native';
 import { useLang } from '../../src/context/LangContext';
+import { useTheme } from '../../src/context/ThemeContext';
 
 
 
@@ -36,6 +37,8 @@ export default function FoldersScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const { T } = useLang();
+  const { colors } = useTheme();
+  const st = useMemo(() => makeStyles(colors), [colors]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [subfolders, setSubfolders] = useState<{ [key: string]: Subfolder[] }>({});
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
@@ -468,10 +471,18 @@ export default function FoldersScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = makeStyles({
+  bg: '#0f0f0f', card: '#1a1a1a', cardBorder: '#2a2a2a', text: '#ffffff',
+  textMuted: '#aaaaaa', textSubtle: '#666666', accent: '#FF6B35',
+  accentSoft: '#FF6B3520', divider: '#222222', overlay: 'rgba(0,0,0,0.85)',
+  inputBg: '#252525', success: '#4CAF50', danger: '#FF4444',
+});
+
+function makeStyles(colors: any) {
+  return StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0f0f0f',
+    backgroundColor: colors.bg,
   },
   loadingContainer: {
     flex: 1,
@@ -489,13 +500,13 @@ const styles = StyleSheet.create({
   },
   menuBtn: {
     padding: 8,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: colors.card,
     borderRadius: 12,
   },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.text,
     flex: 1,
   },
   addButton: {
@@ -517,23 +528,23 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 20,
     fontWeight: '600',
-    color: '#666',
+    color: colors.textSubtle,
     marginTop: 20,
   },
   emptySubtext: {
     fontSize: 14,
-    color: '#555',
+    color: colors.textSubtle,
     marginTop: 8,
     textAlign: 'center',
     paddingHorizontal: 40,
   },
   folderContainer: {
-    backgroundColor: '#1a1a1a',
+    backgroundColor: colors.card,
     borderRadius: 16,
     marginBottom: 12,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#2a2a2a',
+    borderColor: colors.cardBorder,
   },
   folderRow: {
     flexDirection: 'row',
@@ -545,7 +556,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 18,
     fontWeight: '600',
-    color: '#fff',
+    color: colors.text,
   },
   folderActions: {
     flexDirection: 'row',
@@ -557,7 +568,7 @@ const styles = StyleSheet.create({
   },
   subfolderList: {
     borderTopWidth: 1,
-    borderTopColor: '#2a2a2a',
+    borderTopColor: colors.cardBorder,
     paddingVertical: 8,
   },
   subfolderRow: {
@@ -575,7 +586,7 @@ const styles = StyleSheet.create({
   },
   noSubfolders: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSubtle,
     paddingVertical: 12,
     paddingHorizontal: 52,
     fontStyle: 'italic',
@@ -604,25 +615,25 @@ const styles = StyleSheet.create({
   modalContent: {
     width: '100%',
     maxWidth: 400,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: colors.card,
     borderRadius: 20,
     padding: 24,
   },
   modalTitle: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.text,
     marginBottom: 20,
     textAlign: 'center',
   },
   modalInput: {
-    backgroundColor: '#252525',
+    backgroundColor: colors.inputBg,
     borderRadius: 12,
     padding: 16,
     fontSize: 16,
-    color: '#fff',
+    color: colors.text,
     borderWidth: 1,
-    borderColor: '#333',
+    borderColor: colors.cardBorder,
   },
   modalButtons: {
     flexDirection: 'row',
@@ -633,11 +644,11 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
     borderRadius: 12,
-    backgroundColor: '#333',
+    backgroundColor: colors.cardBorder,
     alignItems: 'center',
   },
   modalCancelText: {
-    color: '#fff',
+    color: colors.text,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -649,7 +660,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalSaveText: {
-    color: '#fff',
+    color: colors.text,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -657,3 +668,4 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
 });
+}

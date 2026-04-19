@@ -1,5 +1,5 @@
 import { authFetch } from '../../src/utils/api';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -212,10 +212,18 @@ export default function FolderDetailScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = makeStyles({
+  bg: '#0f0f0f', card: '#1a1a1a', cardBorder: '#2a2a2a', text: '#ffffff',
+  textMuted: '#aaaaaa', textSubtle: '#666666', accent: '#FF6B35',
+  accentSoft: '#FF6B3520', divider: '#222222', overlay: 'rgba(0,0,0,0.85)',
+  inputBg: '#252525', success: '#4CAF50', danger: '#FF4444',
+});
+
+function makeStyles(colors: any) {
+  return StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0f0f0f',
+    backgroundColor: colors.bg,
   },
   loadingContainer: {
     flex: 1,
@@ -228,7 +236,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#222',
+    borderBottomColor: colors.divider,
   },
   backButton: {
     padding: 8,
@@ -240,11 +248,11 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.text,
   },
   headerSubtitle: {
     fontSize: 14,
-    color: '#888',
+    color: colors.textMuted,
     marginTop: 2,
   },
   scrollView: {
@@ -263,24 +271,24 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 20,
     fontWeight: '600',
-    color: '#666',
+    color: colors.textSubtle,
     marginTop: 20,
   },
   emptySubtext: {
     fontSize: 14,
-    color: '#555',
+    color: colors.textSubtle,
     marginTop: 8,
     textAlign: 'center',
     paddingHorizontal: 40,
   },
   recipeCard: {
     flexDirection: 'row',
-    backgroundColor: '#1a1a1a',
+    backgroundColor: colors.card,
     borderRadius: 16,
     marginBottom: 12,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#2a2a2a',
+    borderColor: colors.cardBorder,
   },
   thumbnail: {
     width: 100,
@@ -289,7 +297,7 @@ const styles = StyleSheet.create({
   placeholderThumbnail: {
     width: 100,
     height: 100,
-    backgroundColor: '#2a2a2a',
+    backgroundColor: colors.cardBorder,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -306,17 +314,17 @@ const styles = StyleSheet.create({
   recipeName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#fff',
+    color: colors.text,
     flex: 1,
   },
   recipeCaption: {
     fontSize: 13,
-    color: '#888',
+    color: colors.textMuted,
     marginTop: 4,
   },
   recipeDate: {
     fontSize: 12,
-    color: '#666',
+    color: colors.textSubtle,
     marginTop: 4,
   },
   deleteButton: {
@@ -325,3 +333,4 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
 });
+}
