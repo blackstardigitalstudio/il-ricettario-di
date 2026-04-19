@@ -1,6 +1,7 @@
 import { authFetch } from '../../src/utils/api';
 import { useLang } from '../../src/context/LangContext';
 import { triggerCountedAd } from '../../src/utils/ads';
+import { exportRecipeAsPdf } from '../../src/utils/pdf';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator,
@@ -444,6 +445,29 @@ export default function RecipeDetailScreen() {
           <TouchableOpacity style={[s.actBtn, { backgroundColor: '#FF6B35' }]} onPress={() => Linking.openURL(recipe.source_url)} testID="open-btn">
             <Ionicons name="play-circle" size={18} color="#fff" />
             <Text style={s.actText}>{T('watch')}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[s.actBtn, { backgroundColor: '#8B5CF6' }]}
+            onPress={async () => {
+              try {
+                await exportRecipeAsPdf(recipe as any, {
+                  ingredients: T('ingredients'),
+                  instructions: T('instructions'),
+                  notes: T('notes'),
+                  description: T('description'),
+                  difficulty: T('difficulty') || 'Difficoltà',
+                  prep_time: T('prep_time') || 'Prep',
+                  cook_time: T('cook_time') || 'Cottura',
+                  share_title: T('share_pdf_title') || 'Condividi ricetta PDF',
+                });
+              } catch (e: any) {
+                Alert.alert(T('error'), e?.message || 'PDF export failed');
+              }
+            }}
+            testID="export-pdf-btn"
+          >
+            <Ionicons name="document-text" size={18} color="#fff" />
+            <Text style={s.actText}>{T('export_pdf') || 'PDF'}</Text>
           </TouchableOpacity>
         </View>
 
