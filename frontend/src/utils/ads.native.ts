@@ -7,6 +7,10 @@
  *   3. Show ad every 5 shopping list generations
  *   4. Show ad ALWAYS before backup export (mandatory)
  *
+ * Premium bypass:
+ *   If AsyncStorage flag `ads_disabled === '1'` is set (user entered the
+ *   correct unlock code), ALL triggers become no-ops.
+ *
  * Safety notes:
  *   - Native module is ONLY available in EAS builds (not Expo Go / web).
  *     All entry points are wrapped in try/catch so the app degrades
@@ -18,6 +22,16 @@
  */
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+export const ADS_DISABLED_KEY = 'ads_disabled';
+
+async function _adsDisabled(): Promise<boolean> {
+  try {
+    return (await AsyncStorage.getItem(ADS_DISABLED_KEY)) === '1';
+  } catch {
+    return false;
+  }
+}
 
 // ----------------- CONFIG -----------------
 // Real ad unit for production, Google test unit for development/Expo Go.
@@ -170,6 +184,7 @@ function _showAdOnce(timeoutMs = 15000): Promise<boolean> {
  */
 export async function triggerCountedAd(key: CounterKey): Promise<boolean> {
   try {
+    if (await _adsDisabled()) return true;
     // Fire and forget init (fast after first call).
     await initAdMob();
     const n = await _bumpCounter(key);
@@ -190,6 +205,7 @@ export async function triggerCountedAd(key: CounterKey): Promise<boolean> {
  */
 export async function mandatoryAd(): Promise<boolean> {
   try {
+    if (await _adsDisabled()) return true;
     await initAdMob();
     await _showAdOnce();
     return true;

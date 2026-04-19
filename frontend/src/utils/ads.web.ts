@@ -3,6 +3,8 @@
  * The real implementation lives in ads.native.ts and is picked up by Metro
  * automatically on iOS/Android.
  */
+export const ADS_DISABLED_KEY = 'ads_disabled';
+
 export async function initAdMob(): Promise<void> {
   return;
 }

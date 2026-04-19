@@ -14,7 +14,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import { authFetch } from '../../src/utils/api';
 import { useLang, LANGUAGES } from '../../src/context/LangContext';
 import { useTheme } from '../../src/context/ThemeContext';
-import { mandatoryAd } from '../../src/utils/ads';
+import { mandatoryAd, ADS_DISABLED_KEY } from '../../src/utils/ads';
 
 export default function SettingsScreen() {
   const navigation = useNavigation();
@@ -27,6 +27,48 @@ export default function SettingsScreen() {
   const [showLangPicker, setShowLangPicker] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
+
+  // Hidden premium unlock: 5 taps on version → opens code dialog.
+  const [versionTaps, setVersionTaps] = useState(0);
+  const [showCodeModal, setShowCodeModal] = useState(false);
+  const [codeInput, setCodeInput] = useState('');
+  const [adsDisabled, setAdsDisabled] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const v = await AsyncStorage.getItem(ADS_DISABLED_KEY);
+        setAdsDisabled(v === '1');
+      } catch { /* */ }
+    })();
+  }, []);
+
+  const onVersionTap = () => {
+    const next = versionTaps + 1;
+    setVersionTaps(next);
+    if (next >= 5) {
+      setVersionTaps(0);
+      setCodeInput('');
+      setShowCodeModal(true);
+    }
+  };
+
+  const submitCode = async () => {
+    const code = codeInput.trim();
+    if (code === 'Ciao2020') {
+      try { await AsyncStorage.setItem(ADS_DISABLED_KEY, '1'); } catch { /* */ }
+      setAdsDisabled(true);
+      setShowCodeModal(false);
+      Alert.alert('✨ Premium', 'Ads disattivati per sempre su questo dispositivo.');
+    } else if (code === 'reset' || code === 'RESET') {
+      try { await AsyncStorage.removeItem(ADS_DISABLED_KEY); } catch { /* */ }
+      setAdsDisabled(false);
+      setShowCodeModal(false);
+      Alert.alert('Ads', 'Premium rimosso. Gli ads torneranno attivi.');
+    } else {
+      Alert.alert('Codice non valido', 'Il codice inserito non è corretto.');
+    }
+  };
 
   const currentLang = LANGUAGES.find((l) => l.code === lang) || LANGUAGES[0];
 
@@ -318,7 +360,12 @@ export default function SettingsScreen() {
         {/* ABOUT */}
         <Text style={s.sectionTitle}>{T('about')}</Text>
         <View style={s.card}>
-          <View style={s.row}>
+          <TouchableOpacity
+            style={s.row}
+            onPress={onVersionTap}
+            activeOpacity={0.8}
+            testID="about-version-row"
+          >
             <View style={[s.rowIcon, { backgroundColor: colors.accentSoft }]}>
               <Ionicons name="restaurant" size={20} color={colors.accent} />
             </View>
@@ -326,9 +373,47 @@ export default function SettingsScreen() {
               <Text style={s.rowLabel}>Il Ricettario</Text>
               <Text style={s.rowSub}>v1.0.0</Text>
             </View>
-          </View>
+            {adsDisabled ? (
+              <View style={{ backgroundColor: colors.accent, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
+                <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>PREMIUM</Text>
+              </View>
+            ) : null}
+          </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* Premium unlock code modal (hidden: 5 taps on version) */}
+      <Modal visible={showCodeModal} transparent animationType="fade" onRequestClose={() => setShowCodeModal(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setShowCodeModal(false)} />
+          <View style={{ backgroundColor: colors.card, borderRadius: 18, width: '100%', padding: 22, borderWidth: 1, borderColor: colors.cardBorder }}>
+            <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 4, textAlign: 'center' }}>🔑 Codice Premium</Text>
+            <Text style={{ fontSize: 13, color: colors.textMuted, marginBottom: 16, textAlign: 'center' }}>
+              Inserisci il codice per sbloccare la versione senza ads.
+            </Text>
+            <TextInput
+              value={codeInput}
+              onChangeText={setCodeInput}
+              placeholder="Codice"
+              placeholderTextColor={colors.textSubtle}
+              autoCapitalize="none"
+              autoCorrect={false}
+              secureTextEntry
+              style={{ backgroundColor: colors.inputBg, color: colors.text, fontSize: 16, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: colors.cardBorder, marginBottom: 14 }}
+              onSubmitEditing={submitCode}
+              testID="premium-code-input"
+            />
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TouchableOpacity onPress={() => setShowCodeModal(false)} style={{ flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center', backgroundColor: colors.inputBg }}>
+                <Text style={{ color: colors.textMuted, fontSize: 14, fontWeight: '500' }}>{T('cancel')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={submitCode} style={{ flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center', backgroundColor: colors.accent }} testID="premium-code-submit">
+                <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>Conferma</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Language Picker Modal */}
       <Modal visible={showLangPicker} transparent animationType="fade" onRequestClose={() => setShowLangPicker(false)}>
