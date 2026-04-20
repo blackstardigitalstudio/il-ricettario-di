@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Il Ricettario di",
+    "name": "Il Ricettario",
     "slug": "food-organizer-24",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -20,6 +20,7 @@
     },
     "android": {
       "package": "app.emergent.foodorganizer241c92aba2",
+      "versionCode": 2,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#000000"
@@ -27,9 +28,11 @@
       "edgeToEdgeEnabled": true,
       "permissions": [
         "INTERNET",
-        "ACCESS_NETWORK_STATE",
-        "WRITE_EXTERNAL_STORAGE",
-        "READ_EXTERNAL_STORAGE"
+        "ACCESS_NETWORK_STATE"
+      ],
+      "blockedPermissions": [
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_EXTERNAL_STORAGE"
       ],
       "intentFilters": [
         {
