@@ -59,6 +59,7 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
+      "./fix-hermes-plugin",
       "expo-router",
       [
         "expo-splash-screen",

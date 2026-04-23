@@ -304,3 +304,55 @@ Crea questo starter in `/app/memory/templates/expo-production-ready/`:
 ---
 
 **Ultimo update**: 2026-04-23 (da job `food-organizer-24`)
+
+---
+
+## ⚠️ Problema #11 — `Cannot invoke method getAbsolutePath() on null object` durante Gradle Configure
+
+### Sintomo
+```
+FAILURE: Build failed with an exception.
+Build file '.../android/app/build.gradle' line: 14
+> Cannot invoke method getAbsolutePath() on null object
+```
+
+### Causa
+In Expo SDK 54 + React Native 0.81.x il file generato `android/app/build.gradle` contiene a linea 14:
+```groovy
+hermesCommand = new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()).getParentFile().getAbsolutePath() + "/sdks/hermesc/%OS-BIN%/hermesc"
+```
+L'esecuzione di `node --print` tramite Groovy `.execute()` fallisce nel cloud EAS, ritornando stringa vuota → `File("").getParentFile()` restituisce null → NullPointerException.
+
+### Soluzione: plugin locale che patcha build.gradle durante prebuild
+
+File `fix-hermes-plugin.js`:
+```js
+const { withAppBuildGradle } = require('@expo/config-plugins');
+
+const STATIC = 'hermesCommand = "$rootDir/../node_modules/react-native/sdks/hermesc/%OS-BIN%/hermesc"';
+
+module.exports = function withHermesFix(config) {
+  return withAppBuildGradle(config, (cfg) => {
+    cfg.modResults.contents = cfg.modResults.contents.replace(
+      /hermesCommand\s*=\s*new File\(\[.*?\]\.execute\(null,\s*rootDir\)\.text\.trim\(\)\)\.getParentFile\(\)\.getAbsolutePath\(\)\s*\+\s*"\/sdks\/hermesc\/%OS-BIN%\/hermesc"/,
+      STATIC,
+    );
+    return cfg;
+  });
+};
+```
+
+In `app.json` aggiungere come primo plugin:
+```json
+"plugins": [
+  "./fix-hermes-plugin",
+  "expo-router",
+  ...
+]
+```
+
+### Verifica
+Dopo `npx expo prebuild --clean`, controllare che `android/app/build.gradle` linea 14 sia diventata:
+```groovy
+hermesCommand = "$rootDir/../node_modules/react-native/sdks/hermesc/%OS-BIN%/hermesc"
+```
