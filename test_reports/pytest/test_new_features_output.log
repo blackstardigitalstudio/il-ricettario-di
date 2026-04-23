@@ -1,0 +1,45 @@
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.0.3, pluggy-1.6.0 -- /root/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /app/backend
+plugins: anyio-4.13.0
+collecting ... collected 11 items
+
+tests/test_new_features.py::TestRandomRecipes::test_get_random_recipes_default PASSED [  9%]
+tests/test_new_features.py::TestRandomRecipes::test_get_random_recipes_with_count PASSED [ 18%]
+tests/test_new_features.py::TestRandomRecipes::test_random_recipes_no_duplicates_in_single_call PASSED [ 27%]
+tests/test_new_features.py::TestAIRecipeGeneration::test_get_existing_recipe PASSED [ 36%]
+tests/test_new_features.py::TestAIRecipeGeneration::test_trigger_ai_recipe_generation PASSED [ 45%]
+tests/test_new_features.py::TestAIRecipeGeneration::test_recipe_status_becomes_pending FAILED [ 54%]
+tests/test_new_features.py::TestAIRecipeGeneration::test_poll_until_ai_generation_complete FAILED [ 63%]
+tests/test_new_features.py::TestAIRecipeGeneration::test_verify_generated_recipe_content SKIPPED [ 72%]
+tests/test_new_features.py::TestAIRecipeGeneration::test_verify_recipe_persisted_in_db FAILED [ 81%]
+tests/test_new_features.py::TestSearchAndUpdate::test_search_recipes PASSED [ 90%]
+tests/test_new_features.py::TestSearchAndUpdate::test_update_recipe_fields PASSED [100%]
+
+=================================== FAILURES ===================================
+__________ TestAIRecipeGeneration.test_recipe_status_becomes_pending ___________
+tests/test_new_features.py:103: in test_recipe_status_becomes_pending
+    assert data["transcription_status"] in ["pending", "done"], f"Expected 'pending' or 'done', got '{data['transcription_status']}'"
+E   AssertionError: Expected 'pending' or 'done', got 'error'
+E   assert 'error' in ['pending', 'done']
+________ TestAIRecipeGeneration.test_poll_until_ai_generation_complete _________
+tests/test_new_features.py:128: in test_poll_until_ai_generation_complete
+    pytest.fail(f"AI generation failed: {data.get('transcription')}")
+E   Failed: AI generation failed: Errore AI: Failed to generate chat completion: litellm.ServiceUnavailableError: ServiceUnavailableError: OpenAIException - upstream connect error or disconnect/reset before headers. reset reason: remote connection failure, transport failure reason: delayed connect error: Connection refused
+----------------------------- Captured stdout call -----------------------------
+  Attempt 1: Status = error
+✗ AI generation failed with error: Errore AI: Failed to generate chat completion: litellm.ServiceUnavailableError: ServiceUnavailableError: OpenAIException - upstream connect error or disconnect/reset before headers. reset reason: remote connection failure, transport failure reason: delayed connect error: Connection refused
+__________ TestAIRecipeGeneration.test_verify_recipe_persisted_in_db ___________
+tests/test_new_features.py:160: in test_verify_recipe_persisted_in_db
+    assert data["transcription_status"] == "done"
+E   AssertionError: assert 'error' == 'done'
+E     
+E     - done
+E     + error
+----- generated xml file: /app/test_reports/pytest/pytest_new_features.xml -----
+=========================== short test summary info ============================
+FAILED tests/test_new_features.py::TestAIRecipeGeneration::test_recipe_status_becomes_pending
+FAILED tests/test_new_features.py::TestAIRecipeGeneration::test_poll_until_ai_generation_complete
+FAILED tests/test_new_features.py::TestAIRecipeGeneration::test_verify_recipe_persisted_in_db
+==================== 3 failed, 7 passed, 1 skipped in 4.90s ====================

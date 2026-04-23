@@ -1,0 +1,34 @@
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.0.3, pluggy-1.6.0 -- /root/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /app/backend
+plugins: anyio-4.13.0
+collecting ... collected 24 items
+
+tests/test_api_endpoints.py::TestHealthAndProfile::test_health_check PASSED [  4%]
+tests/test_api_endpoints.py::TestHealthAndProfile::test_create_profile PASSED [  8%]
+tests/test_api_endpoints.py::TestHealthAndProfile::test_get_profile PASSED [ 12%]
+tests/test_api_endpoints.py::TestFolders::test_create_folder PASSED      [ 16%]
+tests/test_api_endpoints.py::TestFolders::test_get_folders PASSED        [ 20%]
+tests/test_api_endpoints.py::TestFolders::test_get_folder_by_id PASSED   [ 25%]
+tests/test_api_endpoints.py::TestFolders::test_update_folder PASSED      [ 29%]
+tests/test_api_endpoints.py::TestSubfolders::test_create_subfolder PASSED [ 33%]
+tests/test_api_endpoints.py::TestSubfolders::test_get_subfolders_by_folder PASSED [ 37%]
+tests/test_api_endpoints.py::TestSubfolders::test_update_subfolder PASSED [ 41%]
+tests/test_api_endpoints.py::TestExtract::test_extract_with_invalid_url PASSED [ 45%]
+tests/test_api_endpoints.py::TestExtract::test_extract_with_instagram_url PASSED [ 50%]
+tests/test_api_endpoints.py::TestRecipes::test_create_recipe_with_manual_caption PASSED [ 54%]
+tests/test_api_endpoints.py::TestRecipes::test_get_all_recipes PASSED    [ 58%]
+tests/test_api_endpoints.py::TestRecipes::test_get_recipes_count PASSED  [ 62%]
+tests/test_api_endpoints.py::TestRecipes::test_search_recipes_by_name PASSED [ 66%]
+tests/test_api_endpoints.py::TestRecipes::test_search_recipes_by_notes PASSED [ 70%]
+tests/test_api_endpoints.py::TestRecipes::test_get_recipe_by_id PASSED   [ 75%]
+tests/test_api_endpoints.py::TestRecipes::test_update_recipe PASSED      [ 79%]
+tests/test_api_endpoints.py::TestTranscription::test_trigger_transcription PASSED [ 83%]
+tests/test_api_endpoints.py::TestTranscription::test_transcription_status_update PASSED [ 87%]
+tests/test_api_endpoints.py::TestCleanup::test_delete_recipe PASSED      [ 91%]
+tests/test_api_endpoints.py::TestCleanup::test_delete_subfolder PASSED   [ 95%]
+tests/test_api_endpoints.py::TestCleanup::test_delete_folder PASSED      [100%]
+
+------- generated xml file: /app/test_reports/pytest/pytest_results.xml --------
+============================== 24 passed in 7.05s ==============================
