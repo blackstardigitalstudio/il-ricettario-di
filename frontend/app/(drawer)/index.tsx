@@ -66,12 +66,13 @@ const RandomCard = memo(function RandomCard({ r, onPress, st }: { r: Recipe; onP
 
 /** Memoised main list card (the expensive repeater) */
 const RecipeCard = memo(function RecipeCard({
-  recipe, onPress, onDelete, labelNoDescription,
+  recipe, onPress, onDelete, labelNoDescription, st,
 }: {
   recipe: Recipe;
   onPress: () => void;
   onDelete: () => void;
   labelNoDescription: string;
+  st: any;
 }) {
   const dateStr = useMemo(
     () => (recipe.created_at ? new Date(recipe.created_at).toLocaleDateString(undefined) : ''),
@@ -449,7 +450,7 @@ function makeStyles(colors: any) {
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: colors.card,
+    backgroundColor: colors.accent,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
@@ -457,8 +458,6 @@ function makeStyles(colors: any) {
     shadowOpacity: 0.35,
     shadowRadius: 5,
     elevation: 6,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
   },
   randomSection: { marginBottom: 20 },
   randomHeader: {
