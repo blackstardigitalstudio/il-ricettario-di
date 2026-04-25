@@ -19,6 +19,7 @@
     },
     "production": {
       "autoIncrement": true,
+      "prebuildCommand": "echo skipping-prebuild-using-committed-android",
       "android": {
         "buildType": "app-bundle"
       }

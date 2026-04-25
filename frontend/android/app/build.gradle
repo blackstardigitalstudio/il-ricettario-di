@@ -9,7 +9,7 @@ def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
  * By default you don't need to apply any configuration, just uncomment the lines you need.
  */
 react {
-    entryFile = file(["node", "-e", "require('expo/scripts/resolveAppEntry')", "$rootDir/..", "android", "absolute"].execute(null, rootDir).text.trim())
+    entryFile = file("$rootDir/../node_modules/expo-router/entry.js")
     reactNativeDir = file("$rootDir/../node_modules/react-native")
     hermesCommand = "$rootDir/../node_modules/react-native/sdks/hermesc/%OS-BIN%/hermesc"
     codegenDir = file("$rootDir/../node_modules/@react-native/codegen")

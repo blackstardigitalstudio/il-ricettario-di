@@ -15,10 +15,9 @@ const { withAppBuildGradle } = require('@expo/config-plugins');
 
 // Static replacements for the `react { ... }` block
 const STATIC_LINES = {
-  // entryFile: resolved app entry js (require expo/scripts/resolveAppEntry).
-  // We pass the resolve logic via a small gradle expression using relative node_modules path.
-  entryFile:
-    '    entryFile = file(["node", "-e", "require(\'expo/scripts/resolveAppEntry\')", "$rootDir/..", "android", "absolute"].execute(null, rootDir).text.trim())',
+  // entryFile: hardcoded to expo-router/entry.js since main field of package.json
+  // is "expo-router/entry". This eliminates the last dynamic node-execute call.
+  entryFile: '    entryFile = file("$rootDir/../node_modules/expo-router/entry.js")',
   reactNativeDir: '    reactNativeDir = file("$rootDir/../node_modules/react-native")',
   hermesCommand:
     '    hermesCommand = "$rootDir/../node_modules/react-native/sdks/hermesc/%OS-BIN%/hermesc"',
