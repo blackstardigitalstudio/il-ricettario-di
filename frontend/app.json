@@ -1,14 +1,13 @@
 {
   "expo": {
-    "name": "Il Ricettario",
+    "name": "Il Ricettario di Casa",
     "slug": "food-organizer-24",
-    "version": "1.0.0",
+    "version": "1.0.23",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "ilricettariodi",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": false,
-    "jsEngine": "jsc",
+    "newArchEnabled": true,
     "androidStatusBar": {
       "backgroundColor": "#000000",
       "barStyle": "light-content"
@@ -16,12 +15,13 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSPhotoLibraryAddUsageDescription": "Salva video delle ricette nella galleria"
+        "NSPhotoLibraryAddUsageDescription": "Salva video delle ricette nella galleria",
+        "NSCameraUsageDescription": "La fotocamera viene usata per fotografare i tuoi piatti e ricette.",
+        "NSMicrophoneUsageDescription": "Il microfono viene usato per registrare video delle ricette."
       }
     },
     "android": {
       "package": "app.emergent.foodorganizer241c92aba2",
-      "versionCode": 2,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#000000"
@@ -29,11 +29,21 @@
       "edgeToEdgeEnabled": true,
       "permissions": [
         "INTERNET",
-        "ACCESS_NETWORK_STATE"
+        "ACCESS_NETWORK_STATE",
+        "CAMERA",
+        "RECORD_AUDIO",
+        "READ_MEDIA_IMAGES",
+        "READ_MEDIA_VIDEO",
+        "READ_MEDIA_AUDIO",
+        "READ_MEDIA_VISUAL_USER_SELECTED",
+        "VIBRATE",
+        "WAKE_LOCK",
+        "FOREGROUND_SERVICE"
       ],
       "blockedPermissions": [
         "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.READ_EXTERNAL_STORAGE"
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.SYSTEM_ALERT_WINDOW"
       ],
       "intentFilters": [
         {
