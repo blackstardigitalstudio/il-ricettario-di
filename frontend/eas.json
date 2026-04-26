@@ -1,7 +1,7 @@
 {
   "cli": {
     "version": ">= 5.0.0",
-    "appVersionSource": "local"
+    "appVersionSource": "remote"
   },
   "build": {
     "development": {
@@ -19,7 +19,6 @@
     },
     "production": {
       "autoIncrement": true,
-      "prebuildCommand": "echo skipping-prebuild-using-committed-android",
       "android": {
         "buildType": "app-bundle"
       }
