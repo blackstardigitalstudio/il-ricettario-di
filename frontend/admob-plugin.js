@@ -18,6 +18,11 @@ function withAdMobAndroid(config, { androidAppId }) {
   if (!androidAppId) return config;
   return withAndroidManifest(config, (cfg) => {
     const manifest = cfg.modResults;
+    // Ensure the tools namespace is declared on <manifest> (required for tools:replace)
+    manifest.manifest.$ = manifest.manifest.$ || {};
+    if (!manifest.manifest.$['xmlns:tools']) {
+      manifest.manifest.$['xmlns:tools'] = 'http://schemas.android.com/tools';
+    }
     const app = manifest.manifest.application && manifest.manifest.application[0];
     if (!app) return cfg;
     app['meta-data'] = app['meta-data'] || [];
@@ -26,11 +31,13 @@ function withAdMobAndroid(config, { androidAppId }) {
     );
     if (existing) {
       existing.$['android:value'] = androidAppId;
+      existing.$['tools:replace'] = 'android:value';
     } else {
       app['meta-data'].push({
         $: {
           'android:name': ANDROID_META_NAME,
           'android:value': androidAppId,
+          'tools:replace': 'android:value',
         },
       });
     }
