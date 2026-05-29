@@ -21,7 +21,7 @@
       }
     },
     "android": {
-      "package": "app.emergent.foodorganizer241c92aba2",
+      "package": "studio.blackstardigital.ilricettario",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#000000"

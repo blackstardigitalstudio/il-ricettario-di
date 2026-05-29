@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: ricettario-backend
+    runtime: docker
+    dockerfilePath: backend/Dockerfile
+    dockerContext: backend
+    plan: free
+    envVars:
+      # Set these in the Render dashboard (Environment tab) — keep them secret.
+      - key: MONGO_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: IG_COOKIE_KEY
+        sync: false
+      - key: DB_NAME
+        value: ricettario
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash

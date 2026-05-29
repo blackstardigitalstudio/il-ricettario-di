@@ -24,7 +24,7 @@ export default function ShoppingListScreen() {
   const router = useRouter();
   const { T, lang } = useLang();
   const { colors } = useTheme();
-  const st = useMemo(() => makeStyles(colors), [colors]);
+  const s = useMemo(() => makeStyles(colors), [colors]);
 
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -158,7 +158,7 @@ export default function ShoppingListScreen() {
       <SafeAreaView style={s.container}>
         <View style={s.header}>
           <TouchableOpacity onPress={() => router.back()} style={s.hBtn}>
-            <Ionicons name="arrow-back" size={24} color="#fff" />
+            <Ionicons name="arrow-back" size={24} color={colors.text} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={s.title}>🛒 {T('shopping_list') || 'Lista della Spesa'}</Text>
@@ -277,7 +277,7 @@ export default function ShoppingListScreen() {
     <SafeAreaView style={s.container}>
       <View style={s.header}>
         <TouchableOpacity onPress={() => setStep('select')} style={s.hBtn}>
-          <Ionicons name="arrow-back" size={24} color="#fff" />
+          <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={s.title}>🛒 {T('shopping_list') || 'Lista della Spesa'}</Text>
@@ -337,12 +337,6 @@ export default function ShoppingListScreen() {
   );
 }
 
-const s = makeStyles({
-  bg: '#0f0f0f', card: '#1a1a1a', cardBorder: '#2a2a2a', text: '#ffffff',
-  textMuted: '#aaaaaa', textSubtle: '#666666', accent: '#FF6B35',
-  accentSoft: '#FF6B3520', divider: '#222222', overlay: 'rgba(0,0,0,0.85)',
-  inputBg: '#252525', success: '#4CAF50', danger: '#FF4444',
-});
 
 function makeStyles(colors: any) {
   return StyleSheet.create({

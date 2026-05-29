@@ -1,4 +1,4 @@
-package app.emergent.foodorganizer241c92aba2
+package studio.blackstardigital.ilricettario
 
 import android.app.Application
 import android.content.res.Configuration

@@ -371,7 +371,7 @@ export default function SettingsScreen() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={s.rowLabel}>Il Ricettario</Text>
-              <Text style={s.rowSub}>v1.0.0</Text>
+              <Text style={s.rowSub}>v1.0.23</Text>
             </View>
             {adsDisabled ? (
               <View style={{ backgroundColor: colors.accent, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
@@ -379,6 +379,15 @@ export default function SettingsScreen() {
               </View>
             ) : null}
           </TouchableOpacity>
+          <View style={s.divider} />
+          <View style={[s.row, { justifyContent: 'center' }]}>
+            <View style={{ flexDirection: 'row', width: 22, height: 15, borderRadius: 2, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: colors.cardBorder }}>
+              <View style={{ flex: 1, backgroundColor: '#009246' }} />
+              <View style={{ flex: 1, backgroundColor: '#ffffff' }} />
+              <View style={{ flex: 1, backgroundColor: '#CE2B37' }} />
+            </View>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textMuted, letterSpacing: 0.5 }}>Made in Italy</Text>
+          </View>
         </View>
       </ScrollView>
 

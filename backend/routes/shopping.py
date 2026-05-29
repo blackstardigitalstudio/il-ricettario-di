@@ -10,8 +10,9 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
-from config import EMERGENT_LLM_KEY, logger
+from config import logger
 from db import db, get_current_user
+from services.llm import gemini_generate
 
 
 router = APIRouter()
@@ -35,11 +36,7 @@ async def _aggregate_with_ai(raw_blocks: List[dict], lang: str = "it") -> str:
     raw_blocks: [{"name": "Tiramisù", "ingredients": "- 4 uova\n- 250g mascarpone..."}, ...]
     Returns a plain-text list with one item per line prefixed with "- ".
     """
-    try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-    except Exception as e:
-        logger.warning(f"shopping: emergentintegrations unavailable: {e}")
-        # Fallback: concat without aggregation
+    def _concat_fallback() -> str:
         lines: List[str] = []
         for b in raw_blocks:
             for raw_line in (b.get("ingredients") or "").splitlines():
@@ -62,16 +59,12 @@ async def _aggregate_with_ai(raw_blocks: List[dict], lang: str = "it") -> str:
     for b in raw_blocks:
         user_text += f"=== {b.get('name', 'Ricetta')} ===\n{b.get('ingredients', '')}\n\n"
 
-    chat = LlmChat(
-        api_key=EMERGENT_LLM_KEY,
-        session_id=f"shopping-{uuid.uuid4().hex[:10]}",
-        system_message=system,
-    ).with_model("gemini", "gemini-2.5-flash")
-    msg = UserMessage(text=user_text)
-    resp = await chat.send_message(msg)
-    # resp can be string or object depending on SDK version
-    text = resp if isinstance(resp, str) else getattr(resp, "content", str(resp))
-    return (text or "").strip()
+    try:
+        text = await gemini_generate(user_text, system=system)
+    except Exception as e:
+        logger.warning(f"shopping: Gemini unavailable, using concat fallback: {e}")
+        return _concat_fallback()
+    return (text or "").strip() or _concat_fallback()
 
 
 @router.post("/shopping-list/generate", response_model=ShoppingListResponse)

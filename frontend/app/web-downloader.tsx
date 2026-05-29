@@ -1,10 +1,11 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView, WebViewNavigation } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useLang } from '../src/context/LangContext';
+import { useTheme, ThemeColors } from '../src/context/ThemeContext';
 
 // Use a mobile-friendly UA so the websites render their mobile UI
 const MOBILE_UA =
@@ -14,6 +15,8 @@ export default function WebDownloaderScreen() {
   const { url, platform } = useLocalSearchParams<{ url: string; platform?: string }>();
   const router = useRouter();
   const { T } = useLang();
+  const { colors } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
   const webRef = useRef<WebView>(null);
   const [loading, setLoading] = useState(true);
   const [currentUrl, setCurrentUrl] = useState('');
@@ -65,11 +68,11 @@ export default function WebDownloaderScreen() {
     <SafeAreaView style={s.container}>
       <View style={s.header}>
         <TouchableOpacity style={s.hBtn} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#fff" />
+          <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
         <Text style={s.hTitle} numberOfLines={1}>Download video</Text>
         <TouchableOpacity style={s.hBtn} onPress={() => webRef.current?.reload()}>
-          <Ionicons name="refresh" size={22} color="#fff" />
+          <Ionicons name="refresh" size={22} color={colors.text} />
         </TouchableOpacity>
       </View>
 
@@ -98,7 +101,7 @@ export default function WebDownloaderScreen() {
             style={{ flex: 1, backgroundColor: '#fff' }}
           />
           {loading ? (
-            <View style={s.overlay}><ActivityIndicator size="large" color="#FF6B35" /></View>
+            <View style={s.overlay}><ActivityIndicator size="large" color={colors.accent} /></View>
           ) : null}
         </View>
       )}
@@ -110,17 +113,19 @@ export default function WebDownloaderScreen() {
   );
 }
 
-const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0f0f0f' },
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 10, backgroundColor: '#1a1a1a' },
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.bg },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 10, backgroundColor: colors.card },
   hBtn: { padding: 8 },
-  hTitle: { flex: 1, fontSize: 16, fontWeight: '600', color: '#fff', textAlign: 'center' },
-  hint: { color: '#FF6B35', fontSize: 12, padding: 10, backgroundColor: '#1a1a1a', textAlign: 'center' },
-  overlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15,15,15,0.7)', justifyContent: 'center', alignItems: 'center' },
+  hTitle: { flex: 1, fontSize: 16, fontWeight: '600', color: colors.text, textAlign: 'center' },
+  hint: { color: colors.accent, fontSize: 12, padding: 10, backgroundColor: colors.card, textAlign: 'center' },
+  overlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.overlay, justifyContent: 'center', alignItems: 'center' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
-  webFallback: { color: '#ccc', textAlign: 'center', marginBottom: 16 },
-  openBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FF6B35', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 10 },
+  webFallback: { color: colors.textMuted, textAlign: 'center', marginBottom: 16 },
+  openBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.accent, paddingVertical: 12, paddingHorizontal: 20, borderRadius: 10 },
   openBtnText: { color: '#fff', fontWeight: '600' },
-  footer: { padding: 8, backgroundColor: '#1a1a1a', borderTopWidth: 1, borderTopColor: '#2a2a2a' },
-  footerHint: { color: '#666', fontSize: 11 },
+  footer: { padding: 8, backgroundColor: colors.card, borderTopWidth: 1, borderTopColor: colors.cardBorder },
+  footerHint: { color: colors.textSubtle, fontSize: 11 },
 });
+}

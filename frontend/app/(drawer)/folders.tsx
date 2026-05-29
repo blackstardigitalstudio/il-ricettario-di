@@ -38,7 +38,7 @@ export default function FoldersScreen() {
   const navigation = useNavigation();
   const { T } = useLang();
   const { colors } = useTheme();
-  const st = useMemo(() => makeStyles(colors), [colors]);
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [subfolders, setSubfolders] = useState<{ [key: string]: Subfolder[] }>({});
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
@@ -470,13 +470,6 @@ export default function FoldersScreen() {
     </SafeAreaView>
   );
 }
-
-const styles = makeStyles({
-  bg: '#0f0f0f', card: '#1a1a1a', cardBorder: '#2a2a2a', text: '#ffffff',
-  textMuted: '#aaaaaa', textSubtle: '#666666', accent: '#FF6B35',
-  accentSoft: '#FF6B3520', divider: '#222222', overlay: 'rgba(0,0,0,0.85)',
-  inputBg: '#252525', success: '#4CAF50', danger: '#FF4444',
-});
 
 function makeStyles(colors: any) {
   return StyleSheet.create({

@@ -38,7 +38,7 @@ export default function RecipeDetailScreen() {
   const router = useRouter();
   const { T } = useLang();
   const { colors } = useTheme();
-  const st = useMemo(() => makeStyles(colors), [colors]);
+  const s = useMemo(() => makeStyles(colors), [colors]);
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [loading, setLoading] = useState(true);
   const [transcribing, setTranscribing] = useState(false);
@@ -249,7 +249,7 @@ export default function RecipeDetailScreen() {
     }
     message += `📱 Video: ${recipe.source_url}\n\n`;
     message += `✨ ${T('discover_app')}\n`;
-    message += `👉 ${T('download_app')}: https://play.google.com/store/apps/details?id=app.emergent.foodorganizer241c92aba2`;
+    message += `👉 ${T('download_app')}: https://play.google.com/store/apps/details?id=studio.blackstardigital.ilricettario`;
 
     try {
       if (Platform.OS === 'web') {
@@ -357,7 +357,7 @@ export default function RecipeDetailScreen() {
     <SafeAreaView style={s.container}>
       <View style={s.header}>
         <TouchableOpacity style={s.hBtn} onPress={() => router.back()} testID="back-btn">
-          <Ionicons name="arrow-back" size={26} color="#fff" />
+          <Ionicons name="arrow-back" size={26} color={colors.text} />
         </TouchableOpacity>
         <Text style={s.hTitle} numberOfLines={1}>{recipe.name}</Text>
         <TouchableOpacity style={s.hBtn} onPress={toggleFavorite} testID="fav-btn">
@@ -697,13 +697,6 @@ export default function RecipeDetailScreen() {
     </SafeAreaView>
   );
 }
-
-const s = makeStyles({
-  bg: '#0f0f0f', card: '#1a1a1a', cardBorder: '#2a2a2a', text: '#ffffff',
-  textMuted: '#aaaaaa', textSubtle: '#666666', accent: '#FF6B35',
-  accentSoft: '#FF6B3520', divider: '#222222', overlay: 'rgba(0,0,0,0.85)',
-  inputBg: '#252525', success: '#4CAF50', danger: '#FF4444',
-});
 
 function makeStyles(colors: any) {
   return StyleSheet.create({

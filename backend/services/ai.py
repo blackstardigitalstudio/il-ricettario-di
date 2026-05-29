@@ -2,11 +2,11 @@
 import asyncio
 import base64
 import os
-import uuid
 
-from config import EMERGENT_LLM_KEY, logger
+from config import logger
 from db import db
 from services.instagram import check_rate_limit
+from services.llm import gemini_generate
 from services.scraping import extract_real_media
 from services.video import extract_multiple_frames_from_local, extract_multiple_frames_from_url
 
@@ -32,19 +32,13 @@ async def do_ai_recipe_generation(recipe_id: str, recipe: dict):
       - `transcription`: step-by-step procedure + tips + servings (string)
     """
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
-
-        chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
-            session_id=f"recipe-{recipe_id}-{uuid.uuid4().hex[:6]}",
-            system_message=(
-                "Sei un esperto chef italiano. Analizza l'immagine (se fornita) e la descrizione "
-                "per generare una ricetta dettagliata e realistica in italiano. Rispondi SOLO in formato JSON valido "
-                "con due chiavi: \"ingredients\" (lista testuale con trattini per ciascun ingrediente e quantità) "
-                "e \"steps\" (procedimento numerato dettagliato + tempi + consigli dello chef + porzioni). "
-                "Niente testo fuori dal JSON."
-            ),
-        ).with_model("gemini", "gemini-2.5-flash")
+        system_message = (
+            "Sei un esperto chef italiano. Analizza l'immagine (se fornita) e la descrizione "
+            "per generare una ricetta dettagliata e realistica in italiano. Rispondi SOLO in formato JSON valido "
+            "con due chiavi: \"ingredients\" (lista testuale con trattini per ciascun ingrediente e quantità) "
+            "e \"steps\" (procedimento numerato dettagliato + tempi + consigli dello chef + porzioni). "
+            "Niente testo fuori dal JSON."
+        )
 
         parts = []
         if recipe.get("name"):
@@ -64,31 +58,23 @@ async def do_ai_recipe_generation(recipe_id: str, recipe: dict):
             "Contesto:\n" + context
         )
 
-        msg_content: list = [prompt]
-        file_contents: list = []
+        images: list = []
         # Attach multiple video frames (multi-frame analysis) for better recipe detection
         try:
             frames = await _get_video_frames(recipe, count=6)
             if frames:
                 logger.info(f"Multi-frame: using {len(frames)} frames for AI recipe gen {recipe_id}")
-                for fr in frames:
-                    b64 = base64.b64encode(fr['bytes']).decode('utf-8')
-                    file_contents.append(ImageContent(image_base64=b64))
+                images = [fr['bytes'] for fr in frames]
             else:
                 # Fallback: use cover thumbnail if no video frames available
                 thumb = recipe.get("thumbnail_url", "")
                 if thumb and thumb.startswith("data:image"):
                     header, b64data = thumb.split(",", 1)
-                    file_contents.append(ImageContent(image_base64=b64data))
+                    images = [base64.b64decode(b64data)]
         except Exception as img_err:
             logger.warning(f"AI image attach err: {img_err}")
 
-        if file_contents:
-            response = await chat.send_message(UserMessage(text=prompt, file_contents=file_contents))
-        else:
-            response = await chat.send_message(UserMessage(text=prompt))
-
-        text = str(response) if response else ""
+        text = await gemini_generate(prompt, system=system_message, images=images)
         ingredients = ""
         steps = text
         # Try to parse JSON (possibly wrapped in markdown fences)
@@ -157,16 +143,10 @@ async def auto_generate_title_and_cover(recipe_id: str, current_name: str, capti
             await db.recipes.update_one({"id": recipe_id}, {"$set": updates})
 
         # Generate AI title
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-
-        chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
-            session_id=f"title-{recipe_id}-{uuid.uuid4().hex[:6]}",
-            system_message=(
-                "Sei un esperto di cucina. Rispondi SOLO con il nome del piatto (2-5 parole), "
-                "niente altro, nessuna introduzione."
-            ),
-        ).with_model("gemini", "gemini-2.5-flash")
+        title_system = (
+            "Sei un esperto di cucina. Rispondi SOLO con il nome del piatto (2-5 parole), "
+            "niente altro, nessuna introduzione."
+        )
 
         if caption:
             context = f"Caption del video: {caption[:800]}"
@@ -178,8 +158,8 @@ async def auto_generate_title_and_cover(recipe_id: str, current_name: str, capti
             "(esempi: 'Pasta alla Carbonara', 'Tiramisù classico', 'Tacos al Pastor'):\n\n"
             f"{context}"
         )
-        title_response = await chat.send_message(UserMessage(text=title_prompt))
-        ai_title = str(title_response).strip().strip('"').strip("'") if title_response else ""
+        title_response = await gemini_generate(title_prompt, system=title_system)
+        ai_title = title_response.strip().strip('"').strip("'") if title_response else ""
 
         if ai_title and 2 < len(ai_title) < 60:
             await db.recipes.update_one({"id": recipe_id}, {"$set": {"name": ai_title}})
@@ -205,8 +185,6 @@ async def extract_ingredients_from_video(recipe_id: str, recipe: dict):
     Writes result to `recipe.ingredients` field (replaces whatever was there).
     """
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
-
         # Always re-fetch the latest version of the recipe so we have the newly
         # populated thumbnail_url / video_url / caption.
         fresh = await db.recipes.find_one({"id": recipe_id}, {"_id": 0})
@@ -234,16 +212,12 @@ async def extract_ingredients_from_video(recipe_id: str, recipe: dict):
             )
             return
 
-        chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
-            session_id=f"ingredients-{recipe_id}-{uuid.uuid4().hex[:6]}",
-            system_message=(
-                "Sei un esperto chef. Analizza i fotogrammi del video (presi in momenti diversi della cottura) "
-                "e la descrizione scritta per identificare TUTTI gli ingredienti usati, anche quelli che "
-                "compaiono solo brevemente. Rispondi SOLO con la lista degli ingredienti in italiano, uno per riga, "
-                "preceduti da un trattino, con quantità stimate se possibili. Nessuna introduzione o commento extra."
-            ),
-        ).with_model("gemini", "gemini-2.5-flash")
+        ingredients_system = (
+            "Sei un esperto chef. Analizza i fotogrammi del video (presi in momenti diversi della cottura) "
+            "e la descrizione scritta per identificare TUTTI gli ingredienti usati, anche quelli che "
+            "compaiono solo brevemente. Rispondi SOLO con la lista degli ingredienti in italiano, uno per riga, "
+            "preceduti da un trattino, con quantità stimate se possibili. Nessuna introduzione o commento extra."
+        )
 
         parts = []
         if recipe.get("name"):
@@ -266,13 +240,8 @@ async def extract_ingredients_from_video(recipe_id: str, recipe: dict):
         logger.info(f"ingredients: analyzing {len(frames)} frames for {recipe_id}")
         await db.recipes.update_one({"id": recipe_id}, {"$set": {"ingredients_status": "pending"}})
 
-        file_contents = []
-        for fr in frames:
-            b64 = base64.b64encode(fr['bytes']).decode('utf-8')
-            file_contents.append(ImageContent(image_base64=b64))
-
-        response = await chat.send_message(UserMessage(text=prompt, file_contents=file_contents))
-        text = str(response).strip() if response else ""
+        images = [fr['bytes'] for fr in frames]
+        text = await gemini_generate(prompt, system=ingredients_system, images=images)
 
         if text and len(text) > 5:
             await db.recipes.update_one(

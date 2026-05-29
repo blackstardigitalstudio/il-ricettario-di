@@ -87,9 +87,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'app.emergent.foodorganizer241c92aba2'
+    namespace 'studio.blackstardigital.ilricettario'
     defaultConfig {
-        applicationId 'app.emergent.foodorganizer241c92aba2'
+        applicationId 'studio.blackstardigital.ilricettario'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

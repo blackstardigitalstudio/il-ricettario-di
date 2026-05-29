@@ -24,8 +24,9 @@ for _d in (VIDEO_DIR, THUMB_DIR, DOWNLOAD_DIR, IG_COOKIE_DIR):
 # Shared executor for blocking I/O (yt-dlp, ffmpeg, etc.)
 executor = ThreadPoolExecutor(max_workers=3)
 
-# LLM key
-EMERGENT_LLM_KEY = os.getenv("EMERGENT_LLM_KEY", "")
+# LLM key (Google Gemini, free tier — get one at https://aistudio.google.com/apikey)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
 # Instagram session encryption
 _IG_KEY = os.getenv("IG_COOKIE_KEY", "")

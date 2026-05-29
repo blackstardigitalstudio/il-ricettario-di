@@ -100,6 +100,16 @@ function CustomDrawerContent(props: any) {
         </TouchableOpacity>
       ))}
 
+      {/* Made in Italy */}
+      <View style={ds.madeInItaly}>
+        <View style={ds.flag}>
+          <View style={[ds.flagStripe, { backgroundColor: '#009246' }]} />
+          <View style={[ds.flagStripe, { backgroundColor: '#ffffff' }]} />
+          <View style={[ds.flagStripe, { backgroundColor: '#CE2B37' }]} />
+        </View>
+        <Text style={ds.madeInItalyText}>Made in Italy</Text>
+      </View>
+
       {/* Edit Name Modal */}
       <Modal visible={showEditName} transparent animationType="fade" onRequestClose={() => setShowEditName(false)}>
         <View style={ds.modalOverlay}>
@@ -147,11 +157,9 @@ function CustomDrawerContent(props: any) {
   );
 }
 
-const ds = makeDrawerStyles({ bg:"#0f0f0f", card:"#1a1a1a", cardBorder:"#2a2a2a", text:"#ffffff", textMuted:"#aaaaaa", textSubtle:"#666666", accent:"#FF6B35", accentSoft:"#FF6B3520", divider:"#222222", overlay:"rgba(0,0,0,0.85)", inputBg:"#252525", success:"#4CAF50", danger:"#FF4444" });
-
 function makeDrawerStyles(colors: any) {
   return StyleSheet.create({
-  scroll: { backgroundColor: '#141414' },
+  scroll: { backgroundColor: colors.bg },
   container: { flex: 1 },
   userHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12, gap: 14 },
   avatar: { width: 50, height: 50, borderRadius: 25 },
@@ -162,6 +170,10 @@ function makeDrawerStyles(colors: any) {
   appTitleText: { fontSize: 16, fontWeight: '600', color: '#FF6B35', flex: 1 },
   sep: { height: 1, backgroundColor: colors.cardBorder, marginVertical: 10, marginHorizontal: 20 },
   menuItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, gap: 14 },
+  madeInItaly: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 'auto', paddingTop: 24, paddingBottom: 12 },
+  flag: { flexDirection: 'row', width: 22, height: 15, borderRadius: 2, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: colors.cardBorder },
+  flagStripe: { flex: 1 },
+  madeInItalyText: { fontSize: 12, fontWeight: '600', color: colors.textMuted, letterSpacing: 0.5 },
   iconCircle: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   menuLabel: { fontSize: 15, fontWeight: '500', color: colors.text, flex: 1 },
   langInline: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.inputBg, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 4 },
@@ -187,12 +199,13 @@ function makeDrawerStyles(colors: any) {
 }
 
 export default function DrawerLayout() {
+  const { colors } = useTheme();
   return (
     <Drawer
       drawerContent={(props) => <CustomDrawerContent {...props} />}
       screenOptions={{
         headerShown: false,
-        drawerStyle: { width: 300, backgroundColor: '#141414' },
+        drawerStyle: { width: 300, backgroundColor: colors.bg },
         drawerType: 'front',
         swipeEnabled: true,
         swipeEdgeWidth: 50,

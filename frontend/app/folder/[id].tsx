@@ -13,6 +13,7 @@ import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useTheme } from '../../src/context/ThemeContext';
 
 
 
@@ -43,6 +44,8 @@ interface Recipe {
 export default function FolderDetailScreen() {
   const { id, subfolder } = useLocalSearchParams<{ id: string; subfolder?: string }>();
   const router = useRouter();
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [folder, setFolder] = useState<Folder | null>(null);
   const [subfolderData, setSubfolderData] = useState<Subfolder | null>(null);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
@@ -137,7 +140,7 @@ export default function FolderDetailScreen() {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={28} color="#fff" />
+          <Ionicons name="arrow-back" size={28} color={colors.text} />
         </TouchableOpacity>
         <View style={styles.headerTitleContainer}>
           <Text style={styles.headerTitle} numberOfLines={1}>
@@ -152,7 +155,7 @@ export default function FolderDetailScreen() {
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         {recipes.length === 0 ? (
           <View style={styles.emptyContainer}>
-            <Ionicons name="restaurant-outline" size={80} color="#444" />
+            <Ionicons name="restaurant-outline" size={80} color={colors.textSubtle} />
             <Text style={styles.emptyText}>Nessuna ricetta</Text>
             <Text style={styles.emptySubtext}>
               Aggiungi ricette a questa cartella dalla tab "Aggiungi"
@@ -177,7 +180,7 @@ export default function FolderDetailScreen() {
                 />
               ) : (
                 <View style={styles.placeholderThumbnail}>
-                  <Ionicons name="videocam" size={40} color="#666" />
+                  <Ionicons name="videocam" size={40} color={colors.textSubtle} />
                 </View>
               )}
               <View style={styles.recipeInfo}>
@@ -202,7 +205,7 @@ export default function FolderDetailScreen() {
                 style={styles.deleteButton}
                 onPress={() => deleteRecipe(recipe.id)}
               >
-                <Ionicons name="trash-outline" size={22} color="#FF4444" />
+                <Ionicons name="trash-outline" size={22} color={colors.danger} />
               </TouchableOpacity>
             </TouchableOpacity>
           ))
@@ -211,13 +214,6 @@ export default function FolderDetailScreen() {
     </SafeAreaView>
   );
 }
-
-const styles = makeStyles({
-  bg: '#0f0f0f', card: '#1a1a1a', cardBorder: '#2a2a2a', text: '#ffffff',
-  textMuted: '#aaaaaa', textSubtle: '#666666', accent: '#FF6B35',
-  accentSoft: '#FF6B3520', divider: '#222222', overlay: 'rgba(0,0,0,0.85)',
-  inputBg: '#252525', success: '#4CAF50', danger: '#FF4444',
-});
 
 function makeStyles(colors: any) {
   return StyleSheet.create({

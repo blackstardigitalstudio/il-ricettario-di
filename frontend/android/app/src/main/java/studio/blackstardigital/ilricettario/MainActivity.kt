@@ -1,4 +1,4 @@
-package app.emergent.foodorganizer241c92aba2
+package studio.blackstardigital.ilricettario
 import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build
