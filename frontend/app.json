@@ -48,18 +48,42 @@
       "intentFilters": [
         {
           "action": "SEND",
-          "category": ["DEFAULT"],
-          "data": [{ "mimeType": "text/plain" }]
+          "category": [
+            "DEFAULT"
+          ],
+          "data": [
+            {
+              "mimeType": "text/plain"
+            }
+          ]
         },
         {
           "action": "VIEW",
-          "category": ["DEFAULT", "BROWSABLE"],
+          "category": [
+            "DEFAULT",
+            "BROWSABLE"
+          ],
           "data": [
-            { "scheme": "https", "host": "www.instagram.com" },
-            { "scheme": "https", "host": "instagram.com" },
-            { "scheme": "https", "host": "www.facebook.com" },
-            { "scheme": "https", "host": "facebook.com" },
-            { "scheme": "https", "host": "fb.watch" }
+            {
+              "scheme": "https",
+              "host": "www.instagram.com"
+            },
+            {
+              "scheme": "https",
+              "host": "instagram.com"
+            },
+            {
+              "scheme": "https",
+              "host": "www.facebook.com"
+            },
+            {
+              "scheme": "https",
+              "host": "facebook.com"
+            },
+            {
+              "scheme": "https",
+              "host": "fb.watch"
+            }
           ]
         }
       ]
@@ -93,6 +117,13 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "e0d3f1ad-947a-4e19-930a-f2e96d3f0bfb"
+      }
+    },
+    "owner": "blackstark"
   }
 }
