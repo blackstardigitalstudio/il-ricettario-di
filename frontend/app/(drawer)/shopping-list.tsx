@@ -10,6 +10,7 @@ import * as Clipboard from 'expo-clipboard';
 import { authFetch } from '../../src/utils/api';
 import { useLang } from '../../src/context/LangContext';
 import { useTheme } from '../../src/context/ThemeContext';
+import { triggerCountedAd } from '../../src/utils/ads';
 
 interface Recipe {
   id: string;
