@@ -158,7 +158,7 @@ export default function FolderDetailScreen() {
             <Ionicons name="restaurant-outline" size={80} color={colors.textSubtle} />
             <Text style={styles.emptyText}>Nessuna ricetta</Text>
             <Text style={styles.emptySubtext}>
-              Aggiungi ricette a questa cartella dalla tab "Aggiungi"
+              Aggiungi ricette a questa cartella dalla tab &quot;Aggiungi&quot;
             </Text>
           </View>
         ) : (
