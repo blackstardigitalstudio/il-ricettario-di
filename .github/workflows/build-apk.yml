@@ -1,0 +1,52 @@
+name: build-il-ricettario-apk
+
+on:
+  push:
+    branches: [ci/build-apk]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install JS dependencies
+        working-directory: frontend
+        run: yarn install --frozen-lockfile
+
+      - name: Expo prebuild (android)
+        working-directory: frontend
+        run: npx expo prebuild -p android --no-install
+        env:
+          EXPO_PUBLIC_BACKEND_URL: https://ricettario-backend.onrender.com
+
+      - name: Install required NDK & CMake
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.1.12297006" "cmake;3.22.1" >/dev/null 2>&1 || true
+
+      - name: Gradle assembleRelease (APK)
+        working-directory: frontend/android
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
+        env:
+          EXPO_PUBLIC_BACKEND_URL: https://ricettario-backend.onrender.com
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: il-ricettario-apk
+          path: frontend/android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
