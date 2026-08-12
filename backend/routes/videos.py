@@ -11,7 +11,7 @@ import httpx
 from config import THUMB_DIR, DOWNLOAD_DIR, executor, logger
 from db import db, get_current_user
 from services.video import (
-    generate_thumbnail_from_url, download_video_file, detect_platform, extract_youtube_text,
+    generate_thumbnail_from_url, download_video_file, detect_platform, youtube_thumb_url,
 )
 
 router = APIRouter()
@@ -50,11 +50,9 @@ async def generate_thumbnail(recipe_id: str, request: Request):
     except Exception:
         pass
 
-    # 2b) YouTube: use the public thumbnail image (never download the video)
+    # 2b) YouTube: use the public CDN thumbnail image (never download the video)
     if recipe.get("platform") == "youtube" or detect_platform(recipe.get("source_url", "")) == "youtube":
-        loop = asyncio.get_event_loop()
-        info = await loop.run_in_executor(executor, extract_youtube_text, recipe["source_url"])
-        yt_thumb = info.get("thumbnail_url", "") if info else ""
+        yt_thumb = youtube_thumb_url(recipe.get("source_url", ""))
         if yt_thumb:
             try:
                 async with httpx.AsyncClient(timeout=15, follow_redirects=True) as hc:

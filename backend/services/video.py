@@ -22,6 +22,24 @@ def detect_platform(url: str) -> str:
     return 'unknown'
 
 
+def youtube_video_id(url: str) -> str:
+    """Extract the 11-char video id from any common YouTube URL form."""
+    patterns = [
+        r'(?:v=|/v/|/embed/|/shorts/|youtu\.be/|/live/)([A-Za-z0-9_-]{11})',
+    ]
+    for p in patterns:
+        m = re.search(p, url)
+        if m:
+            return m.group(1)
+    return ''
+
+
+def youtube_thumb_url(url: str) -> str:
+    """Public CDN thumbnail for a YouTube video (no bot-wall, always available)."""
+    vid = youtube_video_id(url)
+    return f"https://img.youtube.com/vi/{vid}/hqdefault.jpg" if vid else ''
+
+
 def _parse_vtt(vtt: str) -> str:
     """Turn a WebVTT subtitle blob into plain, de-duplicated text."""
     out: list = []

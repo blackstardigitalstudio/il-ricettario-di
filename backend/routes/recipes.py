@@ -22,7 +22,12 @@ async def create_recipe(recipe: RecipeCreate, request: Request):
     if platform == 'unknown':
         raise HTTPException(status_code=400, detail="URL non supportato.")
     loop = asyncio.get_event_loop()
-    result = await loop.run_in_executor(executor, extract_video_info, url)
+    if platform == 'youtube':
+        # Skip yt-dlp (bot-walled from datacenters). Gemini watches the video in the
+        # background task; here we just store the URL + any manual caption.
+        result = {'success': False}
+    else:
+        result = await loop.run_in_executor(executor, extract_video_info, url)
     caption = recipe.manual_caption if recipe.manual_caption else (result.get('caption', '') if result.get('success') else '')
     name = recipe.name.strip() if recipe.name.strip() else "Nuova Ricetta"
 
