@@ -54,7 +54,8 @@ export default function AddRecipeScreen() {
 
   const isValidUrl = (text: string) => {
     const lower = text.toLowerCase();
-    return lower.includes('instagram.com') || lower.includes('facebook.com') || lower.includes('fb.com') || lower.includes('fb.watch');
+    return lower.includes('instagram.com') || lower.includes('facebook.com') || lower.includes('fb.com') || lower.includes('fb.watch')
+      || lower.includes('youtube.com') || lower.includes('youtu.be');
   };
 
   const saveRecipe = async () => {

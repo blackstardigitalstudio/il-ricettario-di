@@ -263,8 +263,7 @@ export default function RecipeDetailScreen() {
 
   const pickCoverImage = async () => {
     try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') { Alert.alert('Permesso', 'Serve accesso alla galleria.'); return; }
+      // Selettore foto di sistema (Android Photo Picker / iOS): nessun permesso "galleria completa" richiesto — policy foto e video Google Play
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'], allowsEditing: true, aspect: [16, 9], quality: 0.6, base64: true,
       });
@@ -389,9 +388,11 @@ export default function RecipeDetailScreen() {
 
         {/* Meta */}
         <View style={s.meta}>
-          <Ionicons name={recipe.platform === 'instagram' ? 'logo-instagram' : 'logo-facebook'} size={18}
-            color={recipe.platform === 'instagram' ? '#E4405F' : '#1877F2'} />
-          <Text style={s.metaText}>{recipe.platform === 'instagram' ? 'Instagram' : 'Facebook'}</Text>
+          <Ionicons
+            name={recipe.platform === 'instagram' ? 'logo-instagram' : recipe.platform === 'youtube' ? 'logo-youtube' : 'logo-facebook'}
+            size={18}
+            color={recipe.platform === 'instagram' ? '#E4405F' : recipe.platform === 'youtube' ? '#FF0000' : '#1877F2'} />
+          <Text style={s.metaText}>{recipe.platform === 'instagram' ? 'Instagram' : recipe.platform === 'youtube' ? 'YouTube' : 'Facebook'}</Text>
           <Text style={s.metaDate}>{new Date(recipe.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}</Text>
         </View>
         <TouchableOpacity activeOpacity={0.7} onPress={() => openEditModal('name')}>
@@ -433,14 +434,17 @@ export default function RecipeDetailScreen() {
 
         {/* Actions */}
         <View style={s.actions}>
-          <TouchableOpacity style={[s.actBtn, { backgroundColor: '#4CAF50' }, downloading && s.disabled]}
-            onPress={downloadVideo} disabled={downloading} testID="download-btn">
-            {downloading ? (
-              <><ActivityIndicator size="small" color="#fff" /><Text style={s.actText}>{downloadProgress > 0 ? `${downloadProgress}%` : T('preparing_download')}</Text></>
-            ) : (
-              <><Ionicons name="download" size={18} color="#fff" /><Text style={s.actText}>{T('download')}</Text></>
-            )}
-          </TouchableOpacity>
+          {/* Download is not offered for YouTube (Play Store / YouTube ToS) */}
+          {recipe.platform !== 'youtube' ? (
+            <TouchableOpacity style={[s.actBtn, { backgroundColor: '#4CAF50' }, downloading && s.disabled]}
+              onPress={downloadVideo} disabled={downloading} testID="download-btn">
+              {downloading ? (
+                <><ActivityIndicator size="small" color="#fff" /><Text style={s.actText}>{downloadProgress > 0 ? `${downloadProgress}%` : T('preparing_download')}</Text></>
+              ) : (
+                <><Ionicons name="download" size={18} color="#fff" /><Text style={s.actText}>{T('download')}</Text></>
+              )}
+            </TouchableOpacity>
+          ) : null}
           <TouchableOpacity style={[s.actBtn, { backgroundColor: '#25D366' }]} onPress={shareOnWhatsApp} testID="share-wa-btn">
             <Ionicons name="logo-whatsapp" size={18} color="#fff" />
             <Text style={s.actText}>{T('share')}</Text>

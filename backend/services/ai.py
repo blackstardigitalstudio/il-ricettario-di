@@ -12,7 +12,13 @@ from services.video import extract_multiple_frames_from_local, extract_multiple_
 
 
 async def _get_video_frames(recipe: dict, count: int = 6) -> list:
-    """Extract N frames from the recipe's video. Uses local cache if available."""
+    """Extract N frames from the recipe's video. Uses local cache if available.
+
+    YouTube is intentionally excluded: we never download YouTube videos. Recipes from
+    YouTube are built from text (description + transcript) plus the public cover image.
+    """
+    if recipe.get("platform") == "youtube":
+        return []
     loop = asyncio.get_event_loop()
     local_path = recipe.get("local_video_path", "")
     if local_path and os.path.exists(local_path):
@@ -191,6 +197,7 @@ async def extract_ingredients_from_video(recipe_id: str, recipe: dict):
         if fresh:
             recipe = fresh
 
+        is_youtube = recipe.get("platform") == "youtube"
         frames = await _get_video_frames(recipe, count=6)
         used_cover_fallback = False
         if not frames:
@@ -203,7 +210,11 @@ async def extract_ingredients_from_video(recipe_id: str, recipe: dict):
                     used_cover_fallback = True
                 except Exception:
                     pass
-        if not frames:
+        # YouTube has no frames by design: derive ingredients from the text (description +
+        # transcript) as long as we have a caption to work with.
+        if not frames and is_youtube and (recipe.get("caption") or "").strip():
+            logger.info(f"ingredients: YouTube text-only extraction for {recipe_id}")
+        elif not frames:
             logger.warning(f"ingredients: no frames extractable for {recipe_id}")
             await db.recipes.update_one(
                 {"id": recipe_id},

@@ -5,12 +5,15 @@ import html as html_lib
 import httpx
 
 from config import executor, logger
-from services.video import ytdlp_info, extract_frame_from_video_url
+from services.video import (
+    ytdlp_info, extract_frame_from_video_url, detect_platform, _subtitle_text_from_info,
+)
 
 
 async def extract_real_media(source_url: str, user_id: str = "local_user") -> dict:
     """Try multiple strategies to obtain caption + thumbnail + video_url."""
     result = {"caption": "", "thumbnail_bytes": None, "thumbnail_mime": "image/jpeg", "video_url": ""}
+    is_youtube = detect_platform(source_url) == 'youtube'
 
     # Method 1: yt-dlp
     try:
@@ -18,9 +21,14 @@ async def extract_real_media(source_url: str, user_id: str = "local_user") -> di
         info = await loop.run_in_executor(executor, ytdlp_info, source_url, None)
         if info:
             desc = info.get('description') or info.get('title') or ''
+            if is_youtube:
+                # Enrich with the video transcript (text only) instead of downloading frames.
+                subs = await loop.run_in_executor(executor, _subtitle_text_from_info, info)
+                if subs:
+                    desc = (desc + "\n\nTrascrizione del video: " + subs[:6000]).strip()
             if desc:
                 result['caption'] = desc.strip()
-            if info.get('url'):
+            if info.get('url') and not is_youtube:
                 result['video_url'] = info['url']
             thumb_url = info.get('thumbnail') or ''
             if not thumb_url and info.get('thumbnails'):
@@ -97,8 +105,8 @@ async def extract_real_media(source_url: str, user_id: str = "local_user") -> di
         except Exception as e:
             logger.warning(f"DownloadGram media error: {e}")
 
-    # Method 4: ffmpeg frame as last resort
-    if not result['thumbnail_bytes'] and result['video_url']:
+    # Method 4: ffmpeg frame as last resort (never for YouTube — no video download)
+    if not result['thumbnail_bytes'] and result['video_url'] and not is_youtube:
         try:
             loop = asyncio.get_event_loop()
             frame = await loop.run_in_executor(executor, extract_frame_from_video_url, result['video_url'])
