@@ -1,14 +1,122 @@
 """AI generation (Gemini Vision) for title + full recipe text."""
 import asyncio
 import base64
+import json
 import os
+import re
 
-from config import logger
+import httpx
+
+from config import logger, executor
 from db import db
 from services.instagram import check_rate_limit
-from services.llm import gemini_generate
+from services.llm import gemini_generate, gemini_youtube_generate
 from services.scraping import extract_real_media
-from services.video import extract_multiple_frames_from_local, extract_multiple_frames_from_url
+from services.video import (
+    extract_multiple_frames_from_local, extract_multiple_frames_from_url,
+    detect_platform, youtube_thumb_url,
+)
+
+
+def _parse_recipe_json(text: str) -> dict:
+    """Best-effort parse of a JSON recipe object, tolerating markdown fences."""
+    cleaned = (text or "").strip()
+    m = re.search(r"```(?:json)?\s*(\{.*\})\s*```", cleaned, re.DOTALL)
+    if m:
+        cleaned = m.group(1)
+    else:
+        m2 = re.search(r"\{.*\}", cleaned, re.DOTALL)
+        if m2:
+            cleaned = m2.group(0)
+    try:
+        return json.loads(cleaned)
+    except Exception:
+        return {}
+
+
+async def do_youtube_recipe_generation(recipe_id: str, recipe: dict):
+    """YouTube path: let Gemini WATCH the video URL and produce the full recipe.
+
+    No download and no yt-dlp: Google fetches the video server-side, so this bypasses
+    the datacenter bot-wall and the EU cookie-consent wall that block the scraping path.
+    Produces name + ingredients + steps in one call, plus the public CDN cover image.
+    """
+    loop = asyncio.get_event_loop()
+    source_url = recipe.get("source_url", "")
+
+    # 1) Cover: public YouTube CDN thumbnail (always available, no bot-wall).
+    if not (recipe.get("thumbnail_url") or "").strip():
+        thumb = youtube_thumb_url(source_url)
+        if thumb:
+            try:
+                async with httpx.AsyncClient(timeout=15, follow_redirects=True) as hc:
+                    r = await hc.get(thumb, headers={'User-Agent': 'Mozilla/5.0'})
+                    if r.status_code == 200 and r.headers.get('content-type', '').startswith('image'):
+                        b64 = base64.b64encode(r.content).decode()
+                        await db.recipes.update_one(
+                            {"id": recipe_id},
+                            {"$set": {"thumbnail_url": f"data:image/jpeg;base64,{b64}"}},
+                        )
+            except Exception as e:
+                logger.warning(f"YouTube thumb err {recipe_id}: {e}")
+
+    # 2) Gemini watches the video and returns the recipe as JSON.
+    system_message = (
+        "Sei un esperto chef italiano. Guarda il video di cucina fornito ed estrai la ricetta reale "
+        "mostrata. Rispondi SOLO con un oggetto JSON valido con tre chiavi: "
+        "\"name\" (nome del piatto, 2-6 parole), "
+        "\"ingredients\" (lista testuale, un ingrediente per riga preceduto da trattino, con quantità), "
+        "\"steps\" (procedimento numerato dettagliato + tempi + porzioni + eventuali consigli). "
+        "Tutto in italiano. Niente testo fuori dal JSON."
+    )
+    hint = []
+    if (recipe.get("notes") or "").strip():
+        hint.append(f"Note dell'utente: {recipe['notes']}")
+    if (recipe.get("caption") or "").strip():
+        hint.append(f"Descrizione aggiunta dall'utente: {recipe['caption']}")
+    prompt = (
+        "Guarda questo video e ricostruisci la ricetta completa in italiano. "
+        "Rispondi ESCLUSIVAMENTE con JSON nella forma "
+        '{"name": "...", "ingredients": "- ...\\n- ...", "steps": "1. ...\\n2. ..."}.'
+    )
+    if hint:
+        prompt += "\n\nContesto:\n" + "\n".join(hint)
+
+    await db.recipes.update_one(
+        {"id": recipe_id},
+        {"$set": {"transcription_status": "pending", "ingredients_status": "pending"}},
+    )
+    try:
+        text = await loop.run_in_executor(
+            executor, gemini_youtube_generate, source_url, prompt, system_message,
+        )
+    except Exception as e:
+        logger.error(f"YouTube Gemini error {recipe_id}: {e}")
+        await db.recipes.update_one(
+            {"id": recipe_id},
+            {"$set": {"transcription_status": "error",
+                      "transcription": "Non è stato possibile leggere il video di YouTube. "
+                                       "Apri il video e aggiungi la ricetta a mano.",
+                      "ingredients_status": "error"}},
+        )
+        return
+
+    parsed = _parse_recipe_json(text)
+    name = str(parsed.get("name", "")).strip()
+    ingredients = str(parsed.get("ingredients", "")).strip()
+    steps = str(parsed.get("steps", "")).strip()
+
+    updates = {
+        "transcription": steps or "Errore",
+        "transcription_status": "done" if steps else "error",
+        "ingredients": ingredients,
+        "ingredients_status": "done" if ingredients else "error",
+    }
+    current_name = (recipe.get("name") or "").strip()
+    if name and current_name in ("", "Nuova Ricetta") and 2 < len(name) < 60:
+        updates["name"] = name
+    await db.recipes.update_one({"id": recipe_id}, {"$set": updates})
+    logger.info(f"YouTube recipe done {recipe_id}: name={bool(name)} ing={bool(ingredients)} steps={bool(steps)}")
 
 
 async def _get_video_frames(recipe: dict, count: int = 6) -> list:
@@ -37,6 +145,10 @@ async def do_ai_recipe_generation(recipe_id: str, recipe: dict):
       - `ingredients`: a clean bulleted list of ingredients (string)
       - `transcription`: step-by-step procedure + tips + servings (string)
     """
+    # YouTube uses the watch-the-video path instead of frame analysis.
+    if recipe.get("platform") == "youtube":
+        await do_youtube_recipe_generation(recipe_id, recipe)
+        return
     try:
         system_message = (
             "Sei un esperto chef italiano. Analizza l'immagine (se fornita) e la descrizione "
@@ -122,6 +234,12 @@ async def auto_generate_title_and_cover(recipe_id: str, current_name: str, capti
                                         source_url: str, user_id: str = "local_user"):
     """Background task: extract real caption+thumbnail, then generate AI title."""
     try:
+        # YouTube: Gemini watches the video directly (no scraping / no download).
+        if detect_platform(source_url) == 'youtube':
+            rec = await db.recipes.find_one({"id": recipe_id}, {"_id": 0}) or {}
+            await do_youtube_recipe_generation(recipe_id, rec)
+            return
+
         if 'instagram' in source_url.lower() and not check_rate_limit(user_id):
             logger.warning(f"Rate limit exceeded for user {user_id}")
             await db.recipes.update_one({"id": recipe_id}, {"$set": {"name": current_name or "Nuova Ricetta"}})
@@ -190,6 +308,10 @@ async def extract_ingredients_from_video(recipe_id: str, recipe: dict):
     Downloads the video, samples ~6 frames, then asks Gemini Vision to list ingredients only.
     Writes result to `recipe.ingredients` field (replaces whatever was there).
     """
+    # YouTube: regenerate the whole recipe by watching the video (covers ingredients too).
+    if recipe.get("platform") == "youtube":
+        await do_youtube_recipe_generation(recipe_id, recipe)
+        return
     try:
         # Always re-fetch the latest version of the recipe so we have the newly
         # populated thumbnail_url / video_url / caption.
