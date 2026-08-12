@@ -79,10 +79,11 @@ def gemini_youtube_generate(
         cfg_kwargs["response_mime_type"] = "application/json"
     config = types.GenerateContentConfig(**cfg_kwargs) if cfg_kwargs else None
 
-    contents = [
-        types.Part.from_uri(file_uri=url, mime_type="video/*"),
-        types.Part.from_text(text=prompt),
-    ]
+    # For YouTube URLs the mime_type MUST be omitted, otherwise the video part is ignored.
+    contents = types.Content(parts=[
+        types.Part(file_data=types.FileData(file_uri=url)),
+        types.Part(text=prompt),
+    ])
     response = client.models.generate_content(
         model=model or GEMINI_MODEL, contents=contents, config=config,
     )
