@@ -52,7 +52,47 @@ api_router = APIRouter(prefix="/api")
 @api_router.get("/version", include_in_schema=False)
 async def version():
     """Deploy marker — bump on notable backend changes to detect what's live."""
-    return {"version": "yt-gemini-2"}
+    return {"version": "yt-gemini-3"}
+
+
+@api_router.get("/yt-debug", include_in_schema=False)
+async def yt_debug(url: str, key: str = "", model: str = "", json: int = 1, mime: str = ""):
+    """TEMPORARY diagnostic for YouTube→Gemini. Remove after debugging.
+
+    Returns the raw text + usage metadata so we can tell whether the video part is
+    actually ingested (large prompt_token_count) or silently dropped.
+    """
+    if key != "ytdebug":
+        return {"error": "forbidden"}
+    import os as _os
+    from google import genai
+    from google.genai import types
+    out: dict = {"model": model or _os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
+                 "json": bool(json), "mime": mime or None}
+    try:
+        client_g = genai.Client(api_key=_os.getenv("GEMINI_API_KEY", ""))
+        fd = types.FileData(file_uri=url) if not mime else types.FileData(file_uri=url, mime_type=mime)
+        contents = types.Content(parts=[
+            types.Part(file_data=fd),
+            types.Part(text="Elenca in italiano gli ingredienti principali che vedi nel video."),
+        ])
+        cfg = types.GenerateContentConfig(response_mime_type="application/json") if json else None
+        resp = client_g.models.generate_content(model=out["model"], contents=contents, config=cfg)
+        out["text"] = (getattr(resp, "text", "") or "")[:500]
+        um = getattr(resp, "usage_metadata", None)
+        if um:
+            out["usage"] = {
+                "prompt_token_count": getattr(um, "prompt_token_count", None),
+                "candidates_token_count": getattr(um, "candidates_token_count", None),
+                "total_token_count": getattr(um, "total_token_count", None),
+            }
+        cands = getattr(resp, "candidates", None) or []
+        if cands:
+            out["finish_reason"] = str(getattr(cands[0], "finish_reason", None))
+        out["prompt_feedback"] = str(getattr(resp, "prompt_feedback", None))
+    except Exception as e:
+        out["exception"] = f"{type(e).__name__}: {e}"
+    return out
 
 
 # Order does not really matter, but we group them logically.
