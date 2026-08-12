@@ -204,7 +204,7 @@ export default function HomeScreen() {
       const lastHandled = await AsyncStorage.getItem('clipboard_last_handled');
       const clip = await Clipboard.getStringAsync();
       if (!clip || clip === lastHandled) return;
-      const m = clip.match(/https?:\/\/(?:www\.)?(?:instagram\.com|instagr\.am|facebook\.com|fb\.com|fb\.watch)\/[^\s]+/i);
+      const m = clip.match(/https?:\/\/(?:www\.|m\.)?(?:instagram\.com|instagr\.am|facebook\.com|fb\.com|fb\.watch|youtube\.com|youtu\.be)\/[^\s]+/i);
       if (!m) return;
       const url = m[0];
       Alert.alert(

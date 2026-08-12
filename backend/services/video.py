@@ -1,5 +1,7 @@
 """yt-dlp extraction, ffmpeg helpers and thumbnail extraction."""
 import os
+import re
+import html as html_lib
 import tempfile
 import subprocess
 from typing import Optional
@@ -15,10 +17,100 @@ def detect_platform(url: str) -> str:
         return 'instagram'
     if 'facebook.com' in u or 'fb.com' in u or 'fb.watch' in u:
         return 'facebook'
+    if 'youtube.com' in u or 'youtu.be' in u or 'youtube-nocookie.com' in u:
+        return 'youtube'
     return 'unknown'
 
 
+def _parse_vtt(vtt: str) -> str:
+    """Turn a WebVTT subtitle blob into plain, de-duplicated text."""
+    out: list = []
+    for raw in vtt.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith(('WEBVTT', 'NOTE', 'Kind:', 'Language:')):
+            continue
+        if '-->' in line:
+            continue
+        if line.isdigit():
+            continue
+        line = re.sub(r'<[^>]+>', '', line)          # inline timing tags
+        line = html_lib.unescape(line).strip()
+        if line and (not out or out[-1] != line):     # drop consecutive repeats (auto-captions)
+            out.append(line)
+    return ' '.join(out)
+
+
+def _subtitle_text_from_info(info: dict, langs=('it', 'en')) -> str:
+    """Fetch subtitles / auto-captions as plain text WITHOUT downloading the video."""
+    if not isinstance(info, dict):
+        return ''
+    subs = info.get('subtitles') or {}
+    autos = info.get('automatic_captions') or {}
+    ordered: list = []
+    # Prefer human subtitles, then auto-captions; match exact lang then prefix (en-US → en).
+    for pool in (subs, autos):
+        for lang in langs:
+            if lang in pool:
+                ordered.append(pool[lang])
+        for key, tracks in pool.items():
+            if any(key.lower().startswith(l) for l in langs) and key not in langs:
+                ordered.append(tracks)
+    pref = {'vtt': 0, 'srv1': 1, 'ttml': 2, 'srv3': 3, 'json3': 4}
+    try:
+        with httpx.Client(timeout=15, follow_redirects=True,
+                          headers={'User-Agent': 'Mozilla/5.0'}) as client:
+            for tracks in ordered:
+                for t in sorted(tracks or [], key=lambda x: pref.get(x.get('ext'), 9)):
+                    turl = t.get('url')
+                    if not turl:
+                        continue
+                    try:
+                        r = client.get(turl)
+                        if r.status_code != 200 or not r.text:
+                            continue
+                        text = _parse_vtt(r.text)
+                        if len(text) > 30:
+                            return text
+                    except Exception:
+                        continue
+    except Exception as e:
+        logger.warning(f"subtitle fetch err: {e}")
+    return ''
+
+
+def extract_youtube_text(url: str) -> dict:
+    """YouTube: title + description + subtitles as TEXT only. Never downloads the video."""
+    opts = {'quiet': True, 'no_warnings': True, 'skip_download': True, 'format': 'best'}
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=False) or {}
+        title = (info.get('title') or '').strip()
+        desc = (info.get('description') or '').strip()
+        subs = _subtitle_text_from_info(info)
+        parts = []
+        if title:
+            parts.append(title)
+        if desc:
+            parts.append(desc)
+        if subs:
+            parts.append("Trascrizione del video: " + subs[:6000])
+        caption = "\n\n".join(parts).strip()
+        return {
+            'success': bool(caption),
+            'caption': caption,
+            'video_url': '',  # never expose a downloadable stream for YouTube
+            'thumbnail_url': info.get('thumbnail', '') or '',
+        }
+    except Exception as e:
+        logger.warning(f"YouTube text extract err: {e}")
+        return {'success': False, 'error': str(e)}
+
+
 def extract_video_info(url: str) -> dict:
+    if detect_platform(url) == 'youtube':
+        return extract_youtube_text(url)
     opts = {'quiet': True, 'no_warnings': True, 'extract_flat': False,
             'skip_download': True, 'format': 'best[ext=mp4]/best'}
     try:

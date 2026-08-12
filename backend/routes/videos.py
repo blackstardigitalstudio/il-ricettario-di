@@ -10,7 +10,9 @@ import httpx
 
 from config import THUMB_DIR, DOWNLOAD_DIR, executor, logger
 from db import db, get_current_user
-from services.video import generate_thumbnail_from_url, download_video_file
+from services.video import (
+    generate_thumbnail_from_url, download_video_file, detect_platform, extract_youtube_text,
+)
 
 router = APIRouter()
 
@@ -48,6 +50,24 @@ async def generate_thumbnail(recipe_id: str, request: Request):
     except Exception:
         pass
 
+    # 2b) YouTube: use the public thumbnail image (never download the video)
+    if recipe.get("platform") == "youtube" or detect_platform(recipe.get("source_url", "")) == "youtube":
+        loop = asyncio.get_event_loop()
+        info = await loop.run_in_executor(executor, extract_youtube_text, recipe["source_url"])
+        yt_thumb = info.get("thumbnail_url", "") if info else ""
+        if yt_thumb:
+            try:
+                async with httpx.AsyncClient(timeout=15, follow_redirects=True) as hc:
+                    img = await hc.get(yt_thumb, headers={'User-Agent': 'Mozilla/5.0'})
+                    if img.status_code == 200 and img.headers.get('content-type', '').startswith('image'):
+                        b64 = base64.b64encode(img.content).decode()
+                        url = f"data:image/jpeg;base64,{b64}"
+                        await db.recipes.update_one({"id": recipe_id}, {"$set": {"thumbnail_url": url}})
+                        return {"success": True, "thumbnail_url": url}
+            except Exception as e:
+                logger.warning(f"YouTube thumb fetch err: {e}")
+        return {"success": False, "error": "Impossibile ottenere la copertina. Usa 'Scegli dalla Galleria'."}
+
     # 2) auto-extract via yt-dlp + ffmpeg
     thumb_path = str(THUMB_DIR / f"{recipe_id}.jpg")
     loop = asyncio.get_event_loop()
@@ -77,6 +97,12 @@ async def download_video_endpoint(request: Request, recipe_id: str):
         raise HTTPException(status_code=404, detail="Ricetta non trovata")
 
     source_url = recipe.get("source_url", "")
+
+    # YouTube: video download is intentionally NOT offered (Play Store / YouTube ToS).
+    if recipe.get("platform") == "youtube" or detect_platform(source_url) == "youtube":
+        return {"success": False, "fallback_links": [], "source_url": source_url,
+                "method": "unsupported"}
+
     out_name = f"{recipe_id}.mp4"
     out_path = DOWNLOAD_DIR / out_name
     internal_url = f"/api/videos/{out_name}"
