@@ -40,6 +40,42 @@ def youtube_thumb_url(url: str) -> str:
     return f"https://img.youtube.com/vi/{vid}/hqdefault.jpg" if vid else ''
 
 
+def youtube_data_fetch(url: str) -> dict:
+    """Fetch title + description + thumbnail via the official YouTube Data API v3.
+
+    Works from any server (API-key auth, no bot-wall, no cookie-consent wall). Requires
+    YOUTUBE_API_KEY. Returns {} when the key is missing or the call fails.
+    """
+    from config import YOUTUBE_API_KEY
+    vid = youtube_video_id(url)
+    if not vid or not YOUTUBE_API_KEY:
+        return {}
+    try:
+        r = httpx.get(
+            "https://www.googleapis.com/youtube/v3/videos",
+            params={"part": "snippet", "id": vid, "key": YOUTUBE_API_KEY},
+            timeout=20,
+        )
+        if r.status_code != 200:
+            logger.warning(f"YouTube Data API {r.status_code}: {r.text[:200]}")
+            return {}
+        items = r.json().get("items", [])
+        if not items:
+            return {}
+        sn = items[0].get("snippet", {})
+        thumbs = sn.get("thumbnails", {}) or {}
+        thumb = (thumbs.get("maxres") or thumbs.get("high") or thumbs.get("medium")
+                 or thumbs.get("default") or {}).get("url", "")
+        return {
+            "title": sn.get("title", "") or "",
+            "description": sn.get("description", "") or "",
+            "thumbnail": thumb,
+        }
+    except Exception as e:
+        logger.warning(f"YouTube Data API err: {e}")
+        return {}
+
+
 def _parse_vtt(vtt: str) -> str:
     """Turn a WebVTT subtitle blob into plain, de-duplicated text."""
     out: list = []
