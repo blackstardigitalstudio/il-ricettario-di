@@ -28,6 +28,10 @@ executor = ThreadPoolExecutor(max_workers=3)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
+# YouTube Data API v3 key (free — enable the API and create a key in Google Cloud console).
+# Used to read a video's title + description server-side (bot-proof, region-proof).
+YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "")
+
 # Instagram session encryption
 _IG_KEY = os.getenv("IG_COOKIE_KEY", "")
 IG_COOKIE_KEY = _IG_KEY.encode() if _IG_KEY else None

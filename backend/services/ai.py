@@ -10,11 +10,11 @@ import httpx
 from config import logger, executor
 from db import db
 from services.instagram import check_rate_limit
-from services.llm import gemini_generate, gemini_youtube_generate
+from services.llm import gemini_generate
 from services.scraping import extract_real_media
 from services.video import (
     extract_multiple_frames_from_local, extract_multiple_frames_from_url,
-    detect_platform, youtube_thumb_url,
+    detect_platform, youtube_thumb_url, youtube_data_fetch,
 )
 
 
@@ -44,59 +44,79 @@ async def do_youtube_recipe_generation(recipe_id: str, recipe: dict):
     loop = asyncio.get_event_loop()
     source_url = recipe.get("source_url", "")
 
-    # 1) Cover: public YouTube CDN thumbnail (always available, no bot-wall).
-    if not (recipe.get("thumbnail_url") or "").strip():
-        thumb = youtube_thumb_url(source_url)
-        if thumb:
-            try:
-                async with httpx.AsyncClient(timeout=15, follow_redirects=True) as hc:
-                    r = await hc.get(thumb, headers={'User-Agent': 'Mozilla/5.0'})
-                    if r.status_code == 200 and r.headers.get('content-type', '').startswith('image'):
+    await db.recipes.update_one(
+        {"id": recipe_id},
+        {"$set": {"transcription_status": "pending", "ingredients_status": "pending"}},
+    )
+
+    # 1) Official YouTube Data API: title + description (bot-proof, region-proof).
+    data = await loop.run_in_executor(executor, youtube_data_fetch, source_url)
+    title = (data.get("title") or "").strip()
+    description = (data.get("description") or "").strip()
+
+    # 2) Cover image (Data API thumbnail, else public CDN). Reused as a hint for Gemini.
+    cover_b64 = None
+    thumb_url = (data.get("thumbnail") or "").strip() or youtube_thumb_url(source_url)
+    if thumb_url:
+        try:
+            async with httpx.AsyncClient(timeout=15, follow_redirects=True) as hc:
+                r = await hc.get(thumb_url, headers={'User-Agent': 'Mozilla/5.0'})
+                if r.status_code == 200 and r.headers.get('content-type', '').startswith('image'):
+                    cover_b64 = r.content
+                    if not (recipe.get("thumbnail_url") or "").strip():
                         b64 = base64.b64encode(r.content).decode()
                         await db.recipes.update_one(
                             {"id": recipe_id},
                             {"$set": {"thumbnail_url": f"data:image/jpeg;base64,{b64}"}},
                         )
-            except Exception as e:
-                logger.warning(f"YouTube thumb err {recipe_id}: {e}")
+        except Exception as e:
+            logger.warning(f"YouTube thumb err {recipe_id}: {e}")
 
-    # 2) Gemini watches the video and returns the recipe as JSON.
-    system_message = (
-        "Sei un esperto chef italiano. Guarda il video di cucina fornito ed estrai la ricetta reale "
-        "mostrata. Rispondi SOLO con un oggetto JSON valido con tre chiavi: "
-        "\"name\" (nome del piatto, 2-6 parole), "
-        "\"ingredients\" (lista testuale, un ingrediente per riga preceduto da trattino, con quantità), "
-        "\"steps\" (procedimento numerato dettagliato + tempi + porzioni + eventuali consigli). "
-        "Tutto in italiano. Niente testo fuori dal JSON."
-    )
-    hint = []
-    if (recipe.get("notes") or "").strip():
-        hint.append(f"Note dell'utente: {recipe['notes']}")
-    if (recipe.get("caption") or "").strip():
-        hint.append(f"Descrizione aggiunta dall'utente: {recipe['caption']}")
-    prompt = (
-        "Guarda questo video e ricostruisci la ricetta completa in italiano. "
-        "Rispondi ESCLUSIVAMENTE con JSON nella forma "
-        '{"name": "...", "ingredients": "- ...\\n- ...", "steps": "1. ...\\n2. ..."}.'
-    )
-    if hint:
-        prompt += "\n\nContesto:\n" + "\n".join(hint)
-
-    await db.recipes.update_one(
-        {"id": recipe_id},
-        {"$set": {"transcription_status": "pending", "ingredients_status": "pending"}},
-    )
-    try:
-        text = await loop.run_in_executor(
-            executor, gemini_youtube_generate, source_url, prompt, system_message,
-        )
-    except Exception as e:
-        logger.error(f"YouTube Gemini error {recipe_id}: {e}")
+    # 3) No usable text (missing/invalid YOUTUBE_API_KEY, or empty description).
+    if not title and not description:
+        logger.warning(f"YouTube: no Data API text for {recipe_id} (key set? video public?)")
         await db.recipes.update_one(
             {"id": recipe_id},
             {"$set": {"transcription_status": "error",
-                      "transcription": "Non è stato possibile leggere il video di YouTube. "
+                      "transcription": "Non è stato possibile leggere i dati del video di YouTube. "
                                        "Apri il video e aggiungi la ricetta a mano.",
+                      "ingredients_status": "error"}},
+        )
+        return
+
+    # 4) Gemini (text) turns title + description into a structured recipe.
+    system_message = (
+        "Sei un esperto chef italiano. Ricava la ricetta reale dal titolo e dalla descrizione di un "
+        "video di cucina (e dall'immagine di copertina, se fornita). Rispondi SOLO con un oggetto JSON "
+        "valido con tre chiavi: \"name\" (nome del piatto, 2-6 parole), "
+        "\"ingredients\" (lista testuale, un ingrediente per riga preceduto da trattino, con quantità), "
+        "\"steps\" (procedimento numerato dettagliato + tempi + porzioni + eventuali consigli). "
+        "Se la descrizione contiene già la ricetta, usala; altrimenti ricostruiscila in modo realistico "
+        "dal titolo. Tutto in italiano. Niente testo fuori dal JSON."
+    )
+    ctx = [f"Titolo: {title}"]
+    if description:
+        ctx.append(f"Descrizione:\n{description[:5000]}")
+    if (recipe.get("notes") or "").strip():
+        ctx.append(f"Note dell'utente: {recipe['notes']}")
+    if (recipe.get("caption") or "").strip():
+        ctx.append(f"Descrizione aggiunta dall'utente: {recipe['caption']}")
+    prompt = (
+        "Ricostruisci la ricetta completa in italiano a partire da questi dati del video. "
+        "Rispondi ESCLUSIVAMENTE con JSON nella forma "
+        '{"name": "...", "ingredients": "- ...\\n- ...", "steps": "1. ...\\n2. ..."}.'
+        "\n\n" + "\n\n".join(ctx)
+    )
+    try:
+        text = await gemini_generate(
+            prompt, system=system_message, images=[cover_b64] if cover_b64 else [],
+        )
+    except Exception as e:
+        logger.error(f"YouTube Gemini(text) error {recipe_id}: {e}")
+        await db.recipes.update_one(
+            {"id": recipe_id},
+            {"$set": {"transcription_status": "error",
+                      "transcription": "Errore nella generazione della ricetta. Riprova più tardi.",
                       "ingredients_status": "error"}},
         )
         return

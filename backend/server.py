@@ -52,43 +52,7 @@ api_router = APIRouter(prefix="/api")
 @api_router.get("/version", include_in_schema=False)
 async def version():
     """Deploy marker — bump on notable backend changes to detect what's live."""
-    return {"version": "yt-gemini-4"}
-
-
-@api_router.get("/yt-debug", include_in_schema=False)
-async def yt_debug(url: str = "", key: str = "", model: str = "gemini-2.5-flash", action: str = "interactions"):
-    """TEMPORARY diagnostic for YouTube→Gemini via the Interactions API. Remove after."""
-    if key != "ytdebug":
-        return {"error": "forbidden"}
-    import os as _os
-    from google import genai
-    out: dict = {"action": action, "model": model, "genai": getattr(genai, "__version__", "?")}
-    try:
-        client_g = genai.Client(api_key=_os.getenv("GEMINI_API_KEY", ""))
-        if action == "listmodels":
-            names = []
-            for m in client_g.models.list():
-                nm = getattr(m, "name", "")
-                actions = getattr(m, "supported_actions", None) or getattr(m, "supported_generation_methods", None)
-                names.append(f"{nm} {actions}")
-            out["models"] = names[:60]
-            return out
-        # Interactions API: YouTube URL as a video input item.
-        resp = client_g.interactions.create(
-            model=model,
-            input=[
-                {"type": "text", "text": "Elenca in italiano gli ingredienti principali mostrati nel video."},
-                {"type": "video", "uri": url},
-            ],
-        )
-        out["output_text"] = (getattr(resp, "output_text", "") or "")[:500]
-        um = getattr(resp, "usage", None) or getattr(resp, "usage_metadata", None)
-        if um:
-            out["usage"] = str(um)[:300]
-        out["status"] = str(getattr(resp, "status", None))
-    except Exception as e:
-        out["exception"] = f"{type(e).__name__}: {e}"
-    return out
+    return {"version": "yt-data-1"}
 
 
 # Order does not really matter, but we group them logically.
