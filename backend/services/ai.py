@@ -108,9 +108,10 @@ async def do_youtube_recipe_generation(recipe_id: str, recipe: dict):
         "\n\n" + "\n\n".join(ctx)
     )
     try:
-        text = await gemini_generate(
-            prompt, system=system_message, images=[cover_b64] if cover_b64 else [],
-        )
+        # Text-only: title + description are rich enough for YouTube, and attaching the
+        # thumbnail here made the model stall and return empty. The cover image is still
+        # saved for display above; it just isn't fed to the recipe generation.
+        text = await gemini_generate(prompt, system=system_message, images=[])
     except Exception as e:
         logger.error(f"YouTube Gemini(text) error {recipe_id}: {e}")
         await db.recipes.update_one(
