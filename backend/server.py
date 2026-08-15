@@ -52,38 +52,22 @@ api_router = APIRouter(prefix="/api")
 @api_router.get("/version", include_in_schema=False)
 async def version():
     """Deploy marker — bump on notable backend changes to detect what's live."""
-    return {"version": "yt-data-3"}
+    return {"version": "yt-diag-gem"}
 
 
 @api_router.get("/yt-diag", include_in_schema=False)
 async def yt_diag(key: str = ""):
-    """TEMPORARY: diagnose which API keys can reach the YouTube Data API. Remove after.
-
-    Never returns key values — only lengths, charset validity, and per-key test status.
-    """
+    """TEMPORARY: test whether GEMINI_API_KEY can generate text. Remove after."""
     if key != "ytdiag":
         return {"error": "forbidden"}
-    import re as _re
-    import httpx as _httpx
-    from config import YOUTUBE_API_KEY, GEMINI_API_KEY
-    out = {}
-    vid = "CGear1dkVo0"
-    for name, val in (("YOUTUBE_API_KEY", YOUTUBE_API_KEY), ("GEMINI_API_KEY", GEMINI_API_KEY)):
-        v = (val or "").strip()
-        valid = bool(_re.fullmatch(r"[A-Za-z0-9_\-]{20,}", v))
-        entry = {"len": len(v), "charset_ok": valid}
-        if valid:
-            try:
-                r = _httpx.get("https://www.googleapis.com/youtube/v3/videos",
-                               params={"part": "snippet", "id": vid, "key": v}, timeout=20)
-                entry["status"] = r.status_code
-                if r.status_code == 200:
-                    entry["items"] = len(r.json().get("items", []))
-                else:
-                    entry["error"] = r.text[:220]
-            except Exception as e:
-                entry["exc"] = str(e)[:150]
-        out[name] = entry
+    from config import GEMINI_API_KEY, GEMINI_MODEL
+    out = {"gem_len": len((GEMINI_API_KEY or "").strip()), "model": GEMINI_MODEL}
+    try:
+        from services.llm import gemini_generate
+        t = await gemini_generate("Rispondi SOLO con la parola: OK")
+        out["gemini_text"] = (t or "")[:120]
+    except Exception as e:
+        out["gemini_exc"] = f"{type(e).__name__}: {str(e)[:250]}"
     return out
 
 
