@@ -123,7 +123,7 @@ export default function AddRecipeScreen() {
             <View style={st.urlRow}>
               <TextInput
                 style={st.urlInput}
-                placeholder="https://www.instagram.com/reel/..."
+                placeholder="Link Instagram, YouTube o Facebook…"
                 placeholderTextColor="#555"
                 value={url}
                 onChangeText={setUrl}
