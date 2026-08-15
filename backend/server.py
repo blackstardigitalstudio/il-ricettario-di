@@ -52,23 +52,7 @@ api_router = APIRouter(prefix="/api")
 @api_router.get("/version", include_in_schema=False)
 async def version():
     """Deploy marker — bump on notable backend changes to detect what's live."""
-    return {"version": "yt-diag-gem"}
-
-
-@api_router.get("/yt-diag", include_in_schema=False)
-async def yt_diag(key: str = ""):
-    """TEMPORARY: test whether GEMINI_API_KEY can generate text. Remove after."""
-    if key != "ytdiag":
-        return {"error": "forbidden"}
-    from config import GEMINI_API_KEY, GEMINI_MODEL
-    out = {"gem_len": len((GEMINI_API_KEY or "").strip()), "model": GEMINI_MODEL}
-    try:
-        from services.llm import gemini_generate
-        t = await gemini_generate("Rispondi SOLO con la parola: OK")
-        out["gemini_text"] = (t or "")[:120]
-    except Exception as e:
-        out["gemini_exc"] = f"{type(e).__name__}: {str(e)[:250]}"
-    return out
+    return {"version": "yt-text-1"}
 
 
 # Order does not really matter, but we group them logically.
