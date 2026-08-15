@@ -54,9 +54,9 @@ const RandomCard = memo(function RandomCard({ r, onPress, st }: { r: Recipe; onP
       <Text style={st.randomName} numberOfLines={2}>{r.name}</Text>
       <View style={st.randomPlatform}>
         <Ionicons
-          name={r.platform === 'instagram' ? 'logo-instagram' : 'logo-facebook'}
+          name={r.platform === 'instagram' ? 'logo-instagram' : r.platform === 'youtube' ? 'logo-youtube' : 'logo-facebook'}
           size={12}
-          color={r.platform === 'instagram' ? '#E4405F' : '#1877F2'}
+          color={r.platform === 'instagram' ? '#E4405F' : r.platform === 'youtube' ? '#FF0000' : '#1877F2'}
         />
         <Text style={st.randomDate}>{dateStr}</Text>
       </View>
@@ -78,8 +78,8 @@ const RecipeCard = memo(function RecipeCard({
     () => (recipe.created_at ? new Date(recipe.created_at).toLocaleDateString(undefined) : ''),
     [recipe.created_at]
   );
-  const iconName = recipe.platform === 'instagram' ? 'logo-instagram' : 'logo-facebook';
-  const iconColor = recipe.platform === 'instagram' ? '#E4405F' : '#1877F2';
+  const iconName = recipe.platform === 'instagram' ? 'logo-instagram' : recipe.platform === 'youtube' ? 'logo-youtube' : 'logo-facebook';
+  const iconColor = recipe.platform === 'instagram' ? '#E4405F' : recipe.platform === 'youtube' ? '#FF0000' : '#1877F2';
   return (
     <TouchableOpacity
       style={st.recipeCard}

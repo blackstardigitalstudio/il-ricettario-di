@@ -118,6 +118,8 @@ export default function FolderDetailScreen() {
     switch (platform) {
       case 'instagram':
         return 'logo-instagram';
+      case 'youtube':
+        return 'logo-youtube';
       case 'facebook':
         return 'logo-facebook';
       default:
@@ -188,7 +190,7 @@ export default function FolderDetailScreen() {
                   <Ionicons
                     name={getPlatformIcon(recipe.platform)}
                     size={18}
-                    color={recipe.platform === 'instagram' ? '#E4405F' : '#1877F2'}
+                    color={recipe.platform === 'instagram' ? '#E4405F' : recipe.platform === 'youtube' ? '#FF0000' : '#1877F2'}
                   />
                   <Text style={styles.recipeName} numberOfLines={1}>
                     {recipe.name}

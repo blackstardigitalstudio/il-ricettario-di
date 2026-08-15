@@ -54,8 +54,8 @@ export default function FavoritesScreen() {
     try { navigation.dispatch(DrawerActions.openDrawer()); } catch (e) { /* */ }
   };
 
-  const getPlatformIcon = (p: string): any => p === 'instagram' ? 'logo-instagram' : 'logo-facebook';
-  const getPlatformColor = (p: string) => p === 'instagram' ? '#E4405F' : '#1877F2';
+  const getPlatformIcon = (p: string): any => p === 'instagram' ? 'logo-instagram' : p === 'youtube' ? 'logo-youtube' : 'logo-facebook';
+  const getPlatformColor = (p: string) => p === 'instagram' ? '#E4405F' : p === 'youtube' ? '#FF0000' : '#1877F2';
 
   if (loading) {
     return (
