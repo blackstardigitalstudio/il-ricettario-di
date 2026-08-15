@@ -43,37 +43,52 @@ def youtube_thumb_url(url: str) -> str:
 def youtube_data_fetch(url: str) -> dict:
     """Fetch title + description + thumbnail via the official YouTube Data API v3.
 
-    Works from any server (API-key auth, no bot-wall, no cookie-consent wall). Requires
-    YOUTUBE_API_KEY. Returns {} when the key is missing or the call fails.
+    Works from any server (API-key auth, no bot-wall, no cookie-consent wall).
+
+    Tries YOUTUBE_API_KEY first, then falls back to GEMINI_API_KEY (the same Google
+    project may have the YouTube Data API enabled). Malformed keys — e.g. a masked
+    value accidentally pasted with bullet characters — are skipped, so one bad env
+    var cannot block a working fallback. Returns {} when nothing succeeds.
     """
-    from config import YOUTUBE_API_KEY
+    from config import YOUTUBE_API_KEY, GEMINI_API_KEY
     vid = youtube_video_id(url)
-    if not vid or not YOUTUBE_API_KEY:
+    if not vid:
         return {}
-    try:
-        r = httpx.get(
-            "https://www.googleapis.com/youtube/v3/videos",
-            params={"part": "snippet", "id": vid, "key": YOUTUBE_API_KEY},
-            timeout=20,
-        )
-        if r.status_code != 200:
-            logger.warning(f"YouTube Data API {r.status_code}: {r.text[:200]}")
-            return {}
-        items = r.json().get("items", [])
-        if not items:
-            return {}
-        sn = items[0].get("snippet", {})
-        thumbs = sn.get("thumbnails", {}) or {}
-        thumb = (thumbs.get("maxres") or thumbs.get("high") or thumbs.get("medium")
-                 or thumbs.get("default") or {}).get("url", "")
-        return {
-            "title": sn.get("title", "") or "",
-            "description": sn.get("description", "") or "",
-            "thumbnail": thumb,
-        }
-    except Exception as e:
-        logger.warning(f"YouTube Data API err: {e}")
-        return {}
+    seen: set = set()
+    candidates = []
+    for k in (YOUTUBE_API_KEY, GEMINI_API_KEY):
+        k = (k or "").strip()
+        # Google API keys are ASCII alphanumeric with - and _; reject anything else
+        # (this filters out a masked "AIzaSy••••" paste).
+        if k and k not in seen and re.fullmatch(r"[A-Za-z0-9_\-]{20,}", k):
+            candidates.append(k)
+            seen.add(k)
+    for key in candidates:
+        try:
+            r = httpx.get(
+                "https://www.googleapis.com/youtube/v3/videos",
+                params={"part": "snippet", "id": vid, "key": key},
+                timeout=20,
+            )
+            if r.status_code != 200:
+                logger.warning(f"YouTube Data API {r.status_code}: {r.text[:150]}")
+                continue
+            items = r.json().get("items", [])
+            if not items:
+                continue
+            sn = items[0].get("snippet", {})
+            thumbs = sn.get("thumbnails", {}) or {}
+            thumb = (thumbs.get("maxres") or thumbs.get("high") or thumbs.get("medium")
+                     or thumbs.get("default") or {}).get("url", "")
+            return {
+                "title": sn.get("title", "") or "",
+                "description": sn.get("description", "") or "",
+                "thumbnail": thumb,
+            }
+        except Exception as e:
+            logger.warning(f"YouTube Data API err: {e}")
+            continue
+    return {}
 
 
 def _parse_vtt(vtt: str) -> str:

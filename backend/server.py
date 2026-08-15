@@ -52,7 +52,7 @@ api_router = APIRouter(prefix="/api")
 @api_router.get("/version", include_in_schema=False)
 async def version():
     """Deploy marker — bump on notable backend changes to detect what's live."""
-    return {"version": "yt-data-1"}
+    return {"version": "yt-data-2"}
 
 
 # Order does not really matter, but we group them logically.
