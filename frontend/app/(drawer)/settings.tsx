@@ -11,10 +11,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
+import Constants from 'expo-constants';
 import { authFetch } from '../../src/utils/api';
 import { useLang, LANGUAGES } from '../../src/context/LangContext';
 import { useTheme } from '../../src/context/ThemeContext';
 import { mandatoryAd, ADS_DISABLED_KEY } from '../../src/utils/ads';
+import AltreApp from '../../components/AltreApp';
 
 export default function SettingsScreen() {
   const navigation = useNavigation();
@@ -371,7 +373,7 @@ export default function SettingsScreen() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={s.rowLabel}>Il Ricettario</Text>
-              <Text style={s.rowSub}>v1.0.23</Text>
+              <Text style={s.rowSub}>v{Constants.expoConfig?.version ?? '1.0.24'}</Text>
             </View>
             {adsDisabled ? (
               <View style={{ backgroundColor: colors.accent, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
@@ -389,6 +391,9 @@ export default function SettingsScreen() {
             <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textMuted, letterSpacing: 0.5 }}>Made in Italy</Text>
           </View>
         </View>
+
+        {/* CROSS-PROMO: Le altre app di Blackstar */}
+        <AltreApp />
       </ScrollView>
 
       {/* Premium unlock code modal (hidden: 5 taps on version) */}
