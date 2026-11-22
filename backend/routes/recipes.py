@@ -6,9 +6,9 @@ from typing import Optional
 import base64
 import binascii
 import hashlib
+import hmac
 import os
 from fastapi import APIRouter, HTTPException, Request, Response
-from fastapi.responses import RedirectResponse
 
 from config import executor
 from db import db, get_current_user
@@ -36,25 +36,35 @@ def _public_base(request: Request) -> str:
     return f"{proto}://{host}"
 
 
+# Image components cannot send the login token, so the cover URL carries a
+# signature instead: only a URL handed out in the owner's (authenticated) list
+# opens the picture. The key is derived from a server-only secret.
+_THUMB_KEY = hashlib.sha256(("thumb:" + os.environ.get("MONGO_URL", "")).encode()).digest()
+
+
+def _thumb_sig(recipe_id: str, content_hash: str) -> str:
+    return hmac.new(_THUMB_KEY, f"{recipe_id}:{content_hash}".encode(), hashlib.sha256).hexdigest()[:20]
+
+
 def _slim_thumbs(docs: list, request: Request) -> list:
     base = None
     for d in docs:
         t = d.get("thumbnail_url") or ""
         if t.startswith("data:image") and d.get("id"):
             base = base or _public_base(request)
-            v = hashlib.md5(t.encode()).hexdigest()[:10]
-            d["thumbnail_url"] = f"{base}/api/recipes/{d['id']}/thumb?v={v}"
+            h = hashlib.md5(t.encode()).hexdigest()[:10]
+            d["thumbnail_url"] = f"{base}/api/recipes/{d['id']}/thumb?v={h}.{_thumb_sig(d['id'], h)}"
     return docs
 
 
 @router.get("/recipes/{recipe_id}/thumb")
-async def get_recipe_thumb(recipe_id: str):
-    """Cover image as real bytes, cacheable by the phone. Public on purpose:
-    image components cannot send auth headers, and the id is an unguessable UUID."""
+async def get_recipe_thumb(recipe_id: str, v: str = ""):
+    """Cover image as real bytes, cacheable by the phone (signed URL, see above)."""
+    h, _, sig = v.partition(".")
+    if not h or not hmac.compare_digest(sig, _thumb_sig(recipe_id, h)):
+        raise HTTPException(status_code=404, detail="Copertina non trovata")
     doc = await db.recipes.find_one({"id": recipe_id}, {"_id": 0, "thumbnail_url": 1})
     t = (doc or {}).get("thumbnail_url") or ""
-    if (t.startswith("http://") or t.startswith("https://")) and "/thumb" not in t:
-        return RedirectResponse(t, status_code=302)
     if not t.startswith("data:image") or "," not in t:
         raise HTTPException(status_code=404, detail="Copertina non trovata")
     head, b64 = t.split(",", 1)
