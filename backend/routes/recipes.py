@@ -3,7 +3,12 @@ import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Request
+import base64
+import binascii
+import hashlib
+import hmac
+import os
+from fastapi import APIRouter, HTTPException, Request, Response
 
 from config import executor
 from db import db, get_current_user
@@ -12,6 +17,67 @@ from services.video import detect_platform, extract_video_info
 from services.ai import do_ai_recipe_generation, auto_generate_title_and_cover, compress_old_videos, extract_ingredients_from_video
 
 router = APIRouter()
+
+
+# ---------------------------------------------------------------------------
+# Thumbnails out of the lists.
+# Covers are stored as base64 data URLs. Sending them inside every list
+# response meant each opening of the home screen re-downloaded every cover,
+# which burned Render's metered free bandwidth (5 GB/month). Lists now carry
+# a short URL instead; the phone downloads each cover once and keeps it in
+# its image cache (the ?v= hash changes when the cover changes).
+# ---------------------------------------------------------------------------
+def _public_base(request: Request) -> str:
+    env = (os.environ.get("PUBLIC_BACKEND_URL") or "").rstrip("/")
+    if env:
+        return env
+    proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
+    return f"{proto}://{host}"
+
+
+# Image components cannot send the login token, so the cover URL carries a
+# signature instead: only a URL handed out in the owner's (authenticated) list
+# opens the picture. The key is derived from a server-only secret.
+_THUMB_KEY = hashlib.sha256(("thumb:" + os.environ.get("MONGO_URL", "")).encode()).digest()
+
+
+def _thumb_sig(recipe_id: str, content_hash: str) -> str:
+    return hmac.new(_THUMB_KEY, f"{recipe_id}:{content_hash}".encode(), hashlib.sha256).hexdigest()[:20]
+
+
+def _slim_thumbs(docs: list, request: Request) -> list:
+    base = None
+    for d in docs:
+        t = d.get("thumbnail_url") or ""
+        if t.startswith("data:image") and d.get("id"):
+            base = base or _public_base(request)
+            h = hashlib.md5(t.encode()).hexdigest()[:10]
+            d["thumbnail_url"] = f"{base}/api/recipes/{d['id']}/thumb?v={h}.{_thumb_sig(d['id'], h)}"
+    return docs
+
+
+@router.get("/recipes/{recipe_id}/thumb")
+async def get_recipe_thumb(recipe_id: str, v: str = ""):
+    """Cover image as real bytes, cacheable by the phone (signed URL, see above)."""
+    h, _, sig = v.partition(".")
+    if not h or not hmac.compare_digest(sig, _thumb_sig(recipe_id, h)):
+        raise HTTPException(status_code=404, detail="Copertina non trovata")
+    doc = await db.recipes.find_one({"id": recipe_id}, {"_id": 0, "thumbnail_url": 1})
+    t = (doc or {}).get("thumbnail_url") or ""
+    if not t.startswith("data:image") or "," not in t:
+        raise HTTPException(status_code=404, detail="Copertina non trovata")
+    head, b64 = t.split(",", 1)
+    media = head[5:].split(";", 1)[0] or "image/jpeg"
+    try:
+        data = base64.b64decode(b64)
+    except (binascii.Error, ValueError):
+        raise HTTPException(status_code=404, detail="Copertina non valida")
+    return Response(
+        content=data,
+        media_type=media,
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
 
 
 @router.post("/recipes")
@@ -57,7 +123,7 @@ async def get_random_recipes(request: Request, count: int = 3):
         {"$sample": {"size": count}},
         {"$project": {"_id": 0}},
     ]
-    return await db.recipes.aggregate(pipeline).to_list(count)
+    return _slim_thumbs(await db.recipes.aggregate(pipeline).to_list(count), request)
 
 
 @router.get("/recipes/count")
@@ -113,7 +179,8 @@ async def get_recipes(request: Request, folder_id: Optional[str] = None,
         }
     else:
         projection = {"_id": 0}
-    return await db.recipes.find(q, projection).sort("created_at", -1).to_list(1000)
+    docs = await db.recipes.find(q, projection).sort("created_at", -1).to_list(1000)
+    return _slim_thumbs(docs, request)
 
 
 @router.get("/recipes/{recipe_id}")
